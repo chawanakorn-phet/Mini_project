@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: olist
+    schema: main
+    description: "Raw Olist Brazilian e-commerce CSV files queried directly from the local workspace folder"
+    meta:
+      external_location: 'datasets/{name}.csv'
+    tables:
+      - name: olist_customers_dataset
+        description: "Customer id and location (city/state/zip)"
+      - name: olist_orders_dataset
+        description: "Order header: status and timeline timestamps"
+      - name: olist_order_items_dataset
+        description: "Order line items: product, seller, price, freight"
+      - name: olist_order_payments_dataset
+        description: "Payments made against each order"
+      - name: olist_order_reviews_dataset
+        description: "Customer review score and text per order"
+      - name: olist_products_dataset
+        description: "Product catalog with category and physical dimensions"
+      - name: olist_sellers_dataset
+        description: "Seller id and location"
+      - name: olist_geolocation_dataset
+        description: "Zip code prefix to lat/lng/city/state lookup"
+      - name: product_category_name_translation
+        description: "Portuguese to English product category name lookup"
