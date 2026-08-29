@@ -5,7 +5,11 @@ WITH source AS (
         o.customer_id,
         CAST(o.order_purchase_timestamp AS DATE) AS order_purchase_date,
         r.review_score,
+        r.review_comment_title,
+        r.review_comment_message,
         CAST(r.review_creation_date AS DATE) AS review_creation_date,
+        r.review_answer_timestamp,
+        DATE_DIFF('hour', r.review_creation_date, r.review_answer_timestamp) AS response_hours,
         CASE WHEN r.review_comment_message IS NOT NULL THEN 1 ELSE 0 END AS has_comment,
         current_localtimestamp() AS insertion_timestamp
     FROM {{ ref('stg_order_reviews') }} AS r

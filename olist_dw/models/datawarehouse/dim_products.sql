@@ -8,6 +8,8 @@ WITH source AS (
         p.product_height_cm,
         p.product_width_cm,
         p.product_photos_qty,
+        p.product_name_lenght AS product_name_length,
+        p.product_description_lenght AS product_description_length,
         current_localtimestamp() AS insertion_timestamp
     FROM {{ ref('stg_products') }} AS p
     LEFT JOIN {{ ref('stg_category_translation') }} AS t
