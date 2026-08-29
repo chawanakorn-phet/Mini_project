@@ -2,6 +2,8 @@ import streamlit as st
 import duckdb
 import pandas as pd
 
+from warehouse import ensure_warehouse_built, DB_PATH
+
 # Page config
 st.set_page_config(
     page_title="Olist DW Explorer",
@@ -10,12 +12,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Connect to database
-DB_PATH = "olist_dw/dev.duckdb"
+with st.spinner("Building data warehouse (first run only)..."):
+    ok, log = ensure_warehouse_built()
+if not ok:
+    st.error("dbt run failed while building the warehouse. See log below.")
+    st.code(log)
+    st.stop()
 
 @st.cache_resource
 def get_connection():
-    return duckdb.connect(DB_PATH, read_only=True)
+    return duckdb.connect(str(DB_PATH), read_only=True)
 
 # Helper to execute queries safely
 def run_query(query):

@@ -6,9 +6,18 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from warehouse import ensure_warehouse_built
+
 st.set_page_config(page_title="Olist Sales OLAP Dashboard", layout="wide")
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+with st.spinner("Building data warehouse (first run only)..."):
+    _ok, _log = ensure_warehouse_built()
+if not _ok:
+    st.error("dbt run failed while building the warehouse. See log below.")
+    st.code(_log)
+    st.stop()
 
 
 def find_duckdb_path():

@@ -9,3 +9,4 @@ logs/
 *.duckdb.wal
 .DS_Store
 node_modules/
+.user.yml
