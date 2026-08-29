@@ -191,6 +191,7 @@
   /* ---- review distribution ---- */
   .stars-dist { display: flex; flex-direction: column; gap: 0.45rem; }
   .stars-row { display: grid; grid-template-columns: 3.2rem 1fr 3.6rem; align-items: center; gap: 0.6rem; }
+  .stars-row--wide { grid-template-columns: 6.5rem 1fr 3.6rem; }
   .stars-label { font-size: 0.8rem; color: var(--muted); font-family: "IBM Plex Mono", monospace; }
   .stars-track { height: 10px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
   .stars-fill { height: 100%; border-radius: 2px; }
@@ -339,10 +340,10 @@
         <div class="stars-row"><span class="stars-label">1&nbsp;★</span><div class="stars-track"><div class="stars-fill" style="width:11.5%; background:var(--bad);"></div></div><span class="stars-pct">11.5%</span></div>
       </div>
       <div class="stars-dist">
-        <div class="stars-row"><span class="stars-label num" style="width:6.5rem;">credit card</span><div class="stars-track"><div class="stars-fill" style="width:73.9%; background:var(--accent);"></div></div><span class="stars-pct">73.9%</span></div>
-        <div class="stars-row"><span class="stars-label num" style="width:6.5rem;">boleto</span><div class="stars-track"><div class="stars-fill" style="width:19.0%; background:var(--accent);"></div></div><span class="stars-pct">19.0%</span></div>
-        <div class="stars-row"><span class="stars-label num" style="width:6.5rem;">voucher</span><div class="stars-track"><div class="stars-fill" style="width:5.6%; background:var(--accent);"></div></div><span class="stars-pct">5.6%</span></div>
-        <div class="stars-row"><span class="stars-label num" style="width:6.5rem;">debit card</span><div class="stars-track"><div class="stars-fill" style="width:1.5%; background:var(--accent);"></div></div><span class="stars-pct">1.5%</span></div>
+        <div class="stars-row stars-row--wide"><span class="stars-label num">credit card</span><div class="stars-track"><div class="stars-fill" style="width:73.9%; background:var(--accent);"></div></div><span class="stars-pct">73.9%</span></div>
+        <div class="stars-row stars-row--wide"><span class="stars-label num">boleto</span><div class="stars-track"><div class="stars-fill" style="width:19.0%; background:var(--accent);"></div></div><span class="stars-pct">19.0%</span></div>
+        <div class="stars-row stars-row--wide"><span class="stars-label num">voucher</span><div class="stars-track"><div class="stars-fill" style="width:5.6%; background:var(--accent);"></div></div><span class="stars-pct">5.6%</span></div>
+        <div class="stars-row stars-row--wide"><span class="stars-label num">debit card</span><div class="stars-track"><div class="stars-fill" style="width:1.5%; background:var(--accent);"></div></div><span class="stars-pct">1.5%</span></div>
       </div>
     </div>
   </section>
