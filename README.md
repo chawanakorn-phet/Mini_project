@@ -1,4 +1,4 @@
-# Mini Project: Data Warehouse & Data Model Design — Olist Brazilian E-Commerce
+# Mini Project: Data Warehouse & Big Data Analytics — Olist Brazilian E-Commerce
 
 การออกแบบคลังข้อมูล (Data Warehouse) และโมเดลข้อมูลหลายมิติ (Multidimensional Data Model)
 เพื่อแปลงระบบ OLTP ของ [Olist Brazilian E-Commerce Public Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
@@ -280,11 +280,26 @@ python query_duckdb.py
 streamlit run app.py
 streamlit run dashboard_app.py
 ```
+---
+## 8. Team Contribution
+
+| การ์ด | รายละเอียด | Assignee |
+|---|---|---|
+| เลือก Operational Database + ER Diagram | เลือก Olist dataset, วาด ER diagram OLTP | chawanakorn-phet |
+| กำหนด Business Questions 15 ข้อ | ระบุคำถามธุรกิจที่ตอบได้จาก dataset | worawatpr-gh,kunthida-samakhan |
+| ออกแบบ Dimensional Model | กำหนด Dimension/Level และ Fact/Measure | chawanakorn-phet |
+| สร้าง Data Model Diagram (Fact Constellation) | mermaid erDiagram ใน README | chawanakorn-phet |
+| เขียน ETL/ELT Pipeline (dbt + DuckDB) | staging + datawarehouse models, dbt run/test | chawanakorn-phet |
+| พัฒนา Interactive Dashboard | Streamlit dashboard จาก fact/dim tables | chawanakorn-phet |
+| Deploy Web Application | ขึ้น Streamlit Community Cloud | chawanakorn-phet |
+| ทำไฟล์ Infographic | สรุปภาพรวม dashboard/insight | kunthida-samakhan |
+| ทำไฟล์ Presentation | สไลด์นำเสนอโครงงาน (Canva) | kunthida-samakhan,yiampopbaipo |
+| เขียน README สรุปทั้งหมด | รวม ER diagram, business Q, ETL, diagram, ลิงก์ | chawanakorn-phet |
 
 ---
 
-## 8. Deliverables
+## 9. Deliverables
 
 - **Infographic**: https://chawanakorn-phet.github.io/Mini_project/deliverables/infographic.html ([source](deliverables/infographic.html)) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
-- **Presentation**: https://canva.link/7srzw8z3nr335cp ([source .pptx](deliverables/Mini_Project_Olist_DW.pptx)) — สไลด์นำเสนอครบทุกหัวข้อของโครงงาน
+- **Presentation**: https://canva.link/7srzw8z3nr335cp — สไลด์นำเสนอ
 - **ลิงก์ Web Application**: https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app
