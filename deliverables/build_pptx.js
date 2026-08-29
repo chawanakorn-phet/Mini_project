@@ -300,13 +300,13 @@ function teamSlide(p) {
     ["วรวัฒน์ พรหมคุณ", "worawatpr-gh", "Data Model Diagram, Deployment"],
     ["เยี่ยมภพ ใบโพธิ์", "yiampopbaipo", "Dashboard, Presentation"],
   ];
-  let y = 1.75;
-  members.forEach(([name, gh, role]) => {
-    s.addShape(p.ShapeType.roundRect, { x: 0.7, y, w: 11.9, h: 0.95, rectRadius: 0.06, fill: { color: CARD_BG }, line: { color: "E1E7EC", width: 1 } });
-    s.addText(name, { x: 1.0, y: y + 0.1, w: 3.6, h: 0.4, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 14, bold: true, color: INK });
-    s.addText("@" + gh, { x: 1.0, y: y + 0.5, w: 3.6, h: 0.35, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 11, color: MUTED });
-    s.addText(role, { x: 4.8, y: y + 0.27, w: 7.5, h: 0.4, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 12.5, color: TEAL });
-    y += 1.1;
+  let y = 1.7;
+  members.forEach(([name, gh, role], i) => {
+    s.addShape(p.ShapeType.ellipse, { x: 0.7, y: y + 0.05, w: 0.4, h: 0.4, fill: { color: TEAL }, line: { width: 0 } });
+    s.addText(String(i + 1), { x: 0.7, y: y + 0.05, w: 0.4, h: 0.4, isTextBox: true, margin: 0, align: "center", valign: "middle", fontFace: "Calibri", fontSize: 14, bold: true, color: WHITE });
+    s.addText(`${name}  (@${gh})`, { x: 1.3, y, w: 10.9, h: 0.4, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 15, bold: true, color: INK });
+    s.addText(role, { x: 1.3, y: y + 0.4, w: 10.9, h: 0.4, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 13, color: TEAL });
+    y += 1.05;
   });
   s.addText("หลักฐานการทำงาน: Commit history และ GitHub Project board ที่ github.com/chawanakorn-phet/Mini_project", {
     x: 0.7, y: 6.0, w: 11.9, h: 0.5, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 12, italic: true, color: MUTED,
