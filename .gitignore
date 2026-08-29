@@ -8,3 +8,4 @@ logs/
 *.duckdb
 *.duckdb.wal
 .DS_Store
+node_modules/

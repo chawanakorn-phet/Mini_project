@@ -271,3 +271,18 @@ streamlit run dashboard_app.py
 ## 8. Team Contribution
 
 ดูประวัติการทำงานของสมาชิกแต่ละคนได้ที่ Commit history และ GitHub Project board ของ repository นี้
+
+| ชื่อ | GitHub | บทบาท |
+|---|---|---|
+| ชวนากร เพชรเจริญรัตน์ | [@chawanakorn-phet](https://github.com/chawanakorn-phet) | Data Modeling, dbt Pipeline, Dashboard |
+| กุลธิดา สมาขันธ์ | [@kunthida-samakhan](https://github.com/kunthida-samakhan) | Business Questions, Infographic |
+| วรวัฒน์ พรหมคุณ | [@worawatpr-gh](https://github.com/worawatpr-gh) | Data Model Diagram, Deployment |
+| เยี่ยมภพ ใบโพธิ์ | [@yiampopbaipo](https://github.com/yiampopbaipo) | Dashboard, Presentation |
+
+---
+
+## 9. Deliverables
+
+- **Infographic**: [`deliverables/infographic.html`](deliverables/infographic.html) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
+- **Presentation**: [`deliverables/Mini_Project_Olist_DW.pptx`](deliverables/Mini_Project_Olist_DW.pptx) — สไลด์นำเสนอครบทุกหัวข้อของโครงงาน
+- **ลิงก์ Web Application**: _(รอ deploy ขึ้น Streamlit Community Cloud — จะอัปเดตลิงก์ที่นี่)_
