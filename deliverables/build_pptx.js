@@ -83,7 +83,12 @@ function operationalDbSlide(p) {
   });
   const mid = (b) => ({ x: b.x + bw / 2, y: b.y + bh / 2 });
   function connector(a, b) {
-    s.addShape(p.ShapeType.line, { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y, line: { color: "9AA7B5", width: 1.5 } });
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    const w = Math.abs(b.x - a.x);
+    const h = Math.abs(b.y - a.y);
+    const flipV = a.y > b.y;
+    s.addShape(p.ShapeType.line, { x, y, w, h, flipV, line: { color: "9AA7B5", width: 1.5 } });
   }
   connector({ x: boxes[0].x + bw, y: boxes[0].y + bh / 2 }, { x: boxes[1].x, y: boxes[1].y + bh / 2 });
   connector({ x: boxes[1].x + bw, y: boxes[1].y + bh / 2 }, { x: boxes[2].x, y: boxes[2].y + bh / 2 });
