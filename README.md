@@ -292,15 +292,15 @@ streamlit run dashboard_app.py
 
 | การ์ด | รายละเอียด | Assignee |
 |---|---|---|
-| เลือก Operational Database + ER Diagram | เลือก Olist dataset, วาด ER diagram OLTP | chawanakorn-phet,kunthida-samakhan |
-| กำหนด Business Questions 15 ข้อ | ระบุคำถามธุรกิจที่ตอบได้จาก dataset | worawatpr-gh,kunthida-samakhan |
+| เลือก Operational Database + ER Diagram | เลือก Olist dataset, วาด ER diagram OLTP | chawanakorn-phet, kunthida-samakhan |
+| กำหนด Business Questions 15 ข้อ | ระบุคำถามธุรกิจที่ตอบได้จาก dataset | worawatpr-gh, kunthida-samakhan |
 | ออกแบบ Dimensional Model | กำหนด Dimension/Level และ Fact/Measure | chawanakorn-phet |
-| สร้าง Data Model Diagram (Fact Constellation) | mermaid erDiagram ใน README | chawanakorn-phet,kunthida-samakhan |
+| สร้าง Data Model Diagram (Fact Constellation) | mermaid erDiagram ใน README | chawanakorn-phet, kunthida-samakhan |
 | เขียน ETL/ELT Pipeline (dbt + DuckDB) | staging + datawarehouse models, dbt run/test | chawanakorn-phet |
 | พัฒนา Interactive Dashboard | Streamlit dashboard จาก fact/dim tables | chawanakorn-phet |
 | Deploy Web Application | ขึ้น Streamlit Community Cloud | chawanakorn-phet |
 | ทำไฟล์ Infographic | สรุปภาพรวม dashboard/insight | chawanakorn-phet |
-| ทำไฟล์ Presentation | สไลด์นำเสนอโครงงาน (Canva) | kunthida-samakhan,yiampopbaipo |
+| ทำไฟล์&นำเสนอ Presentation | จัดทำสไลด์นำเสนอและนำเสนอหน้าชั้นเรียน | kunthida-samakhan, yiampopbaipo, worawatpr-gh |
 | เขียน README สรุปทั้งหมด | รวม ER diagram, business Q, ETL, diagram, ลิงก์ | chawanakorn-phet |
 
 ---
