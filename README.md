@@ -1,4 +1,4 @@
-# Mini Project: Data Warehouse & Data Model Design — Olist Brazilian E-Commerce
+# Mini Project: Data Warehouse & Big Data Analytics — Olist Brazilian E-Commerce
 
 การออกแบบคลังข้อมูล (Data Warehouse) และโมเดลข้อมูลหลายมิติ (Multidimensional Data Model)
 เพื่อแปลงระบบ OLTP ของ [Olist Brazilian E-Commerce Public Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
