@@ -284,7 +284,7 @@ function dashboardSlide(p) {
   s.addText("Top 3 รัฐลูกค้าตามรายได้", { x: 6.9, y: 3.5, w: 5.6, h: 0.4, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 14, bold: true, color: TEAL });
   s.addText("1. SP (São Paulo)\n2. RJ (Rio de Janeiro)\n3. MG (Minas Gerais)", { x: 6.9, y: 3.95, w: 5.6, h: 1.4, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 13, color: INK, lineSpacingMultiple: 1.3 });
 
-  s.addText("ลิงก์ Web Application: [จะเพิ่มหลัง deploy บน Streamlit Community Cloud]", {
+  s.addText("ลิงก์ Web Application: miniproject-vvcre79hljddpvyj82zuub.streamlit.app", {
     x: 0.7, y: 5.7, w: 11.9, h: 0.5, isTextBox: true, margin: 0, fontFace: "Calibri", fontSize: 12, italic: true, color: MUTED,
   });
 }
@@ -357,6 +357,6 @@ dashboardSlide(pres);
 teamSlide(pres);
 closingSlide(pres);
 
-pres.writeFile({ fileName: "Mini_Project_Olist_DW.pptx" }).then(() => {
+pres.writeFile({ fileName: "Mini_Project_Olist_DW.new.pptx" }).then(() => {
   console.log("done");
 });

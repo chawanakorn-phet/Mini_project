@@ -246,6 +246,8 @@ erDiagram
 รองรับการกรองตามช่วงวันที่ หมวดหมู่สินค้า รัฐลูกค้า รัฐผู้ขาย และสถานะออเดอร์
 พร้อมมุมมองยอดขายตามเวลา (ปี/ไตรมาส/เดือน), ตาม product category, และตาม customer state
 
+🔗 **Live**: https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app
+
 ---
 
 ## 7. การตั้งค่าและรันโปรเจกต์
@@ -285,4 +287,4 @@ streamlit run dashboard_app.py
 
 - **Infographic**: [`deliverables/infographic.html`](deliverables/infographic.html) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
 - **Presentation**: [`deliverables/Mini_Project_Olist_DW.pptx`](deliverables/Mini_Project_Olist_DW.pptx) — สไลด์นำเสนอครบทุกหัวข้อของโครงงาน
-- **ลิงก์ Web Application**: _(รอ deploy ขึ้น Streamlit Community Cloud — จะอัปเดตลิงก์ที่นี่)_
+- **ลิงก์ Web Application**: https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app
