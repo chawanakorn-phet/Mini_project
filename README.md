@@ -272,6 +272,6 @@ streamlit run dashboard_app.py
 
 ## 8. Deliverables
 
-- **Infographic**: [`deliverables/infographic.html`](deliverables/infographic.html) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
+- **Infographic**: https://chawanakorn-phet.github.io/Mini_project/deliverables/infographic.html ([source](deliverables/infographic.html)) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
 - **Presentation**: [`deliverables/Mini_Project_Olist_DW.pptx`](deliverables/Mini_Project_Olist_DW.pptx) — สไลด์นำเสนอครบทุกหัวข้อของโครงงาน
 - **ลิงก์ Web Application**: https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app
