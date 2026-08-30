@@ -50,6 +50,7 @@ erDiagram
         string order_status
         timestamp order_purchase_timestamp
         timestamp order_approved_at
+        timestamp order_delivered_carrier_date
         timestamp order_delivered_customer_date
         timestamp order_estimated_delivery_date
     }
@@ -58,6 +59,7 @@ erDiagram
         int order_item_id PK
         string product_id FK
         string seller_id FK
+        timestamp shipping_limit_date
         float price
         float freight_value
     }
@@ -72,12 +74,21 @@ erDiagram
         string review_id PK
         string order_id FK
         int review_score
+        string review_comment_title
         string review_comment_message
+        timestamp review_creation_date
+        timestamp review_answer_timestamp
     }
     PRODUCTS {
         string product_id PK
         string product_category_name FK
+        int product_name_lenght
+        int product_description_lenght
+        int product_photos_qty
         float product_weight_g
+        float product_length_cm
+        float product_height_cm
+        float product_width_cm
     }
     SELLERS {
         string seller_id PK
@@ -89,6 +100,8 @@ erDiagram
         string geolocation_zip_code_prefix
         float geolocation_lat
         float geolocation_lng
+        string geolocation_city
+        string geolocation_state
     }
     PRODUCT_CATEGORY_TRANSLATION {
         string product_category_name PK
@@ -181,11 +194,22 @@ erDiagram
         string product_id FK
         string seller_id FK
         string customer_id FK
+        string order_status
         date order_purchase_date FK
+        timestamp order_purchase_timestamp
+        int order_purchase_hour
+        timestamp order_approved_at
+        timestamp order_delivered_carrier_date
+        timestamp order_delivered_customer_date
+        timestamp order_estimated_delivery_date
+        timestamp shipping_limit_date
         float price
         float freight_value
         float total_item_value
         int delivery_days
+        int seller_processing_days
+        int carrier_transit_days
+        float buyer_seller_distance_km
     }
     fact_order_payments {
         string order_id
@@ -202,6 +226,11 @@ erDiagram
         string customer_id FK
         date order_purchase_date FK
         int review_score
+        string review_comment_title
+        string review_comment_message
+        date review_creation_date
+        timestamp review_answer_timestamp
+        int response_hours
         int has_comment
     }
     dim_date {
@@ -209,23 +238,42 @@ erDiagram
         date full_date
         int year
         int quarter
+        string year_quarter
         int month
         string month_name
+        int day
+        int week_day
+        string day_name
+        int day_is_weekday
     }
     dim_customers {
         string customer_id PK
         string customer_unique_id
+        string zip_code_prefix
         string city
         string state
+        float avg_lat
+        float avg_lng
     }
     dim_products {
         string product_id PK
         string category
+        string category_pt
+        float product_weight_g
+        float product_length_cm
+        float product_height_cm
+        float product_width_cm
+        int product_photos_qty
+        int product_name_length
+        int product_description_length
     }
     dim_sellers {
         string seller_id PK
+        string zip_code_prefix
         string city
         string state
+        float avg_lat
+        float avg_lng
     }
 ```
 
