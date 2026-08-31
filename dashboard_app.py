@@ -271,6 +271,273 @@ def load_seller_pareto():
     """).fetchdf()
 
 
+@st.cache_data
+def load_category_quantity():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT dp.category AS product_category, COUNT(*) AS quantity, SUM(f.price) AS revenue
+        FROM fact_order_items f
+        JOIN dim_products dp ON dp.product_id = f.product_id
+        GROUP BY 1
+        ORDER BY quantity DESC
+        LIMIT 10
+    """).fetchdf()
+
+
+@st.cache_data
+def load_rfm_summary():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        WITH customer_orders AS (
+            SELECT dc.customer_unique_id, f.order_id, MAX(f.order_purchase_date) AS order_date, SUM(f.price) AS order_value
+            FROM fact_order_items f
+            JOIN dim_customers dc ON dc.customer_id = f.customer_id
+            GROUP BY 1, 2
+        ),
+        rfm AS (
+            SELECT
+                customer_unique_id,
+                DATE_DIFF('day', MAX(order_date), (SELECT MAX(order_date) FROM customer_orders)) AS recency_days,
+                COUNT(DISTINCT order_id) AS frequency,
+                SUM(order_value) AS monetary
+            FROM customer_orders
+            GROUP BY 1
+        ),
+        scored AS (
+            SELECT *, NTILE(5) OVER (ORDER BY monetary) AS monetary_quintile
+            FROM rfm
+        )
+        SELECT
+            monetary_quintile,
+            COUNT(*) AS n_customers,
+            ROUND(SUM(monetary), 2) AS total_monetary,
+            ROUND(100.0 * SUM(monetary) / SUM(SUM(monetary)) OVER (), 1) AS pct_of_revenue,
+            ROUND(AVG(recency_days), 0) AS avg_recency_days,
+            ROUND(AVG(frequency), 2) AS avg_frequency
+        FROM scored
+        GROUP BY 1
+        ORDER BY monetary_quintile DESC
+    """).fetchdf()
+
+
+@st.cache_data
+def load_frequency_buckets():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        WITH customer_orders AS (
+            SELECT dc.customer_unique_id, f.order_id, SUM(f.price) AS order_value
+            FROM fact_order_items f
+            JOIN dim_customers dc ON dc.customer_id = f.customer_id
+            GROUP BY 1, 2
+        ),
+        summary AS (
+            SELECT customer_unique_id, COUNT(DISTINCT order_id) AS n_orders, AVG(order_value) AS avg_order_value
+            FROM customer_orders
+            GROUP BY 1
+        )
+        SELECT
+            CASE WHEN n_orders = 1 THEN '1. Bought once'
+                 WHEN n_orders = 2 THEN '2. Bought twice'
+                 ELSE '3. Bought 3+ times' END AS bucket,
+            COUNT(*) AS n_customers,
+            ROUND(AVG(avg_order_value), 2) AS avg_order_value
+        FROM summary
+        GROUP BY 1
+        ORDER BY bucket
+    """).fetchdf()
+
+
+@st.cache_data
+def load_new_customer_growth():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        WITH first_orders AS (
+            SELECT dc.customer_unique_id, dc.state, MIN(f.order_purchase_date) AS first_order_date
+            FROM fact_order_items f
+            JOIN dim_customers dc ON dc.customer_id = f.customer_id
+            GROUP BY 1, 2
+        ),
+        by_period AS (
+            SELECT
+                state,
+                CASE WHEN first_order_date < DATE '2017-10-01' THEN 'first_half' ELSE 'second_half' END AS period,
+                COUNT(*) AS n_new
+            FROM first_orders
+            WHERE first_order_date >= DATE '2017-01-01'
+            GROUP BY 1, 2
+        )
+        SELECT
+            state,
+            SUM(CASE WHEN period = 'first_half' THEN n_new ELSE 0 END) AS new_customers_early,
+            SUM(CASE WHEN period = 'second_half' THEN n_new ELSE 0 END) AS new_customers_recent,
+            ROUND(100.0 * (SUM(CASE WHEN period = 'second_half' THEN n_new ELSE 0 END)
+                - SUM(CASE WHEN period = 'first_half' THEN n_new ELSE 0 END))
+                / NULLIF(SUM(CASE WHEN period = 'first_half' THEN n_new ELSE 0 END), 0), 1) AS growth_pct
+        FROM by_period
+        GROUP BY 1
+        HAVING SUM(CASE WHEN period = 'first_half' THEN n_new ELSE 0 END) >= 20
+        ORDER BY growth_pct DESC
+        LIMIT 10
+    """).fetchdf()
+
+
+@st.cache_data
+def load_lateness_vs_review():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT
+            CASE WHEN f.order_delivered_customer_date > f.order_estimated_delivery_date
+                 THEN '1. Late' ELSE '2. On-time' END AS status,
+            COUNT(*) AS n,
+            ROUND(AVG(r.review_score), 2) AS avg_review_score
+        FROM fact_order_items f
+        JOIN fact_order_reviews r ON r.order_id = f.order_id
+        WHERE f.order_delivered_customer_date IS NOT NULL AND f.order_estimated_delivery_date IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1
+    """).fetchdf()
+
+
+@st.cache_data
+def load_freight_ratio():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT
+            dp.category AS product_category,
+            ROUND(100.0 * SUM(f.freight_value) / NULLIF(SUM(f.price), 0), 1) AS freight_pct_of_price,
+            COUNT(*) AS n
+        FROM fact_order_items f
+        JOIN dim_products dp ON dp.product_id = f.product_id
+        GROUP BY 1
+        HAVING COUNT(*) >= 30
+        ORDER BY freight_pct_of_price DESC
+        LIMIT 10
+    """).fetchdf()
+
+
+@st.cache_data
+def load_late_routes():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT
+            ds.state AS seller_state,
+            dc.state AS customer_state,
+            COUNT(*) AS n_orders,
+            ROUND(100.0 * SUM(CASE WHEN f.order_delivered_customer_date > f.order_estimated_delivery_date THEN 1 ELSE 0 END)
+                / COUNT(*), 1) AS late_pct,
+            ROUND(AVG(f.seller_processing_days), 1) AS avg_seller_processing_days,
+            ROUND(AVG(f.carrier_transit_days), 1) AS avg_carrier_transit_days
+        FROM fact_order_items f
+        JOIN dim_sellers ds ON ds.seller_id = f.seller_id
+        JOIN dim_customers dc ON dc.customer_id = f.customer_id
+        WHERE f.order_delivered_customer_date IS NOT NULL AND f.order_estimated_delivery_date IS NOT NULL
+        GROUP BY 1, 2
+        HAVING COUNT(*) >= 20
+        ORDER BY late_pct DESC
+        LIMIT 10
+    """).fetchdf()
+
+
+@st.cache_data
+def load_category_review():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT
+            dp.category AS product_category,
+            SUM(f.price) AS revenue,
+            ROUND(AVG(r.review_score), 2) AS avg_review_score,
+            COUNT(*) AS n
+        FROM fact_order_items f
+        JOIN dim_products dp ON dp.product_id = f.product_id
+        JOIN fact_order_reviews r ON r.order_id = f.order_id
+        GROUP BY 1
+        HAVING COUNT(*) >= 30
+        ORDER BY revenue DESC
+        LIMIT 15
+    """).fetchdf()
+
+
+@st.cache_data
+def load_product_photos_vs_perf():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT
+            CASE WHEN dp.product_photos_qty <= 1 THEN '1. 0-1 photo'
+                 WHEN dp.product_photos_qty <= 3 THEN '2. 2-3 photos'
+                 ELSE '3. 4+ photos' END AS photo_bucket,
+            ROUND(AVG(r.review_score), 2) AS avg_review_score,
+            COUNT(DISTINCT f.order_id) AS n_orders
+        FROM fact_order_items f
+        JOIN dim_products dp ON dp.product_id = f.product_id
+        JOIN fact_order_reviews r ON r.order_id = f.order_id
+        WHERE dp.product_photos_qty IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1
+    """).fetchdf()
+
+
+@st.cache_data
+def load_product_description_vs_perf():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        SELECT
+            CASE WHEN dp.product_description_length <= 300 THEN '1. Short (<=300 chars)'
+                 WHEN dp.product_description_length <= 800 THEN '2. Medium (301-800)'
+                 ELSE '3. Long (800+)' END AS description_bucket,
+            ROUND(AVG(r.review_score), 2) AS avg_review_score,
+            COUNT(DISTINCT f.order_id) AS n_orders
+        FROM fact_order_items f
+        JOIN dim_products dp ON dp.product_id = f.product_id
+        JOIN fact_order_reviews r ON r.order_id = f.order_id
+        WHERE dp.product_description_length IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1
+    """).fetchdf()
+
+
+@st.cache_data
+def load_basket_pairs():
+    con = get_connection()
+    if not warehouse_ready(con):
+        return pd.DataFrame()
+    return con.execute("""
+        WITH order_cats AS (
+            SELECT DISTINCT f.order_id, dp.category
+            FROM fact_order_items f
+            JOIN dim_products dp ON dp.product_id = f.product_id
+        )
+        SELECT
+            a.category AS category_a,
+            b.category AS category_b,
+            COUNT(*) AS n_orders_together
+        FROM order_cats a
+        JOIN order_cats b ON a.order_id = b.order_id AND a.category < b.category
+        GROUP BY 1, 2
+        ORDER BY n_orders_together DESC
+        LIMIT 10
+    """).fetchdf()
+
+
 def apply_filters(df):
     st.sidebar.header("Filters")
 
@@ -377,6 +644,17 @@ def render_overview_tab(df):
         )
         st.altair_chart(cat_chart, use_container_width=True)
 
+        st.caption("Q1: same top 10, ranked by quantity sold instead — does the ranking change?")
+        qty_df = load_category_quantity()
+        if not qty_df.empty:
+            qty_chart = (
+                alt.Chart(qty_df)
+                .mark_bar(color="#8E6C8A")
+                .encode(x=alt.X("product_category:N", sort="-y"), y="quantity:Q", tooltip=["product_category:N", "quantity:Q", "revenue:Q"])
+                .properties(height=300)
+            )
+            st.altair_chart(qty_chart, use_container_width=True)
+
     with col2:
         st.subheader("Top 10 Customer States by Revenue")
         state_chart = (
@@ -453,6 +731,53 @@ def render_customers_tab():
                 repeat_pct = 100.0 * repeat_row["n_customers"].iloc[0] / total
             st.metric("Repeat customer rate", f"{repeat_pct:.1f}%")
 
+    st.divider()
+    col5, col6 = st.columns(2)
+    with col5:
+        st.subheader("RFM: revenue share by monetary quintile")
+        st.caption("Q4 — quintile 5 = top 20% of customers by total spend")
+        rfm_df = load_rfm_summary()
+        if not rfm_df.empty:
+            top_row = rfm_df[rfm_df["monetary_quintile"] == 5]
+            if not top_row.empty:
+                st.metric("Revenue share from top 20% of customers", f"{top_row['pct_of_revenue'].iloc[0]:.1f}%")
+            chart = (
+                alt.Chart(rfm_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("monetary_quintile:O", title="Monetary quintile (5 = highest spend)"),
+                    y=alt.Y("pct_of_revenue:Q", title="% of total revenue"),
+                    tooltip=["monetary_quintile", "n_customers", "total_monetary", "pct_of_revenue", "avg_recency_days", "avg_frequency"],
+                )
+                .properties(height=300)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    with col6:
+        st.subheader("Avg order value by purchase frequency")
+        st.caption("Q5 — how much more do frequent buyers spend per order?")
+        freq_df = load_frequency_buckets()
+        if not freq_df.empty:
+            chart = (
+                alt.Chart(freq_df)
+                .mark_bar()
+                .encode(x=alt.X("bucket:N", sort=None), y="avg_order_value:Q", tooltip=["bucket", "n_customers", "avg_order_value"])
+                .properties(height=300)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    st.subheader("Fastest-growing new-customer markets")
+    st.caption("Q6 — states ranked by % growth in new customers, early 2017 vs late 2017/2018 (min. 20 early customers)")
+    growth_df = load_new_customer_growth()
+    if not growth_df.empty:
+        chart = (
+            alt.Chart(growth_df)
+            .mark_bar()
+            .encode(x=alt.X("state:N", sort="-y"), y="growth_pct:Q", tooltip=["state", "new_customers_early", "new_customers_recent", "growth_pct"])
+            .properties(height=320)
+        )
+        st.altair_chart(chart, use_container_width=True)
+
 
 def render_delivery_tab():
     st.caption("Answers Q7 (late delivery vs review), Q9/Q10 (distance vs review), Q15 (fulfillment speed vs review)")
@@ -514,6 +839,91 @@ def render_sellers_tab():
     st.altair_chart(chart + rule, use_container_width=True)
 
 
+def render_routes_tab():
+    st.caption("Answers Q7 (late vs on-time review impact), Q8 (freight/price ratio), Q9 (late delivery routes + who's at fault)")
+
+    lateness_df = load_lateness_vs_review()
+    freight_df = load_freight_ratio()
+    routes_df = load_late_routes()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("On-time vs late delivery: review score impact")
+        if not lateness_df.empty:
+            chart = (
+                alt.Chart(lateness_df)
+                .mark_bar()
+                .encode(x=alt.X("status:N", sort=None), y=alt.Y("avg_review_score:Q", scale=alt.Scale(domain=[0, 5])), tooltip=["status", "n", "avg_review_score"])
+                .properties(height=300)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    with col2:
+        st.subheader("Freight as % of price, by category")
+        if not freight_df.empty:
+            chart = (
+                alt.Chart(freight_df)
+                .mark_bar()
+                .encode(x=alt.X("product_category:N", sort="-y"), y="freight_pct_of_price:Q", tooltip=["product_category", "freight_pct_of_price", "n"])
+                .properties(height=300)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    st.subheader("Top 10 seller→customer routes by late-delivery rate")
+    st.caption("avg_seller_processing_days = time to hand off to carrier (seller's fault zone); avg_carrier_transit_days = time in transit (carrier's fault zone)")
+    if not routes_df.empty:
+        st.dataframe(routes_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Not enough data to compute route-level lateness (needs at least 20 orders per route).")
+
+
+def render_products_tab():
+    st.caption("Answers Q11 (revenue vs review by category), Q12 (product-page attributes vs review), Q13 (Market Basket Analysis)")
+
+    category_review_df = load_category_review()
+    photos_df = load_product_photos_vs_perf()
+    description_df = load_product_description_vs_perf()
+    basket_df = load_basket_pairs()
+
+    st.subheader("Revenue vs average review score, by category")
+    if not category_review_df.empty:
+        base = alt.Chart(category_review_df).encode(x=alt.X("product_category:N", sort="-y"))
+        bar = base.mark_bar(color="#4C78A8").encode(y=alt.Y("revenue:Q", title="Revenue"), tooltip=["product_category", "revenue", "avg_review_score", "n"])
+        line = base.mark_line(color="#E45756", point=True).encode(y=alt.Y("avg_review_score:Q", title="Avg review score", scale=alt.Scale(domain=[0, 5])))
+        st.altair_chart(
+            alt.layer(bar, line).resolve_scale(y="independent").properties(height=380),
+            use_container_width=True,
+        )
+        st.caption("Bars = revenue (left scale) · Red line = avg review score (right scale, 0-5)")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Product photos vs review score")
+        if not photos_df.empty:
+            chart = (
+                alt.Chart(photos_df)
+                .mark_bar()
+                .encode(x=alt.X("photo_bucket:N", sort=None), y=alt.Y("avg_review_score:Q", scale=alt.Scale(domain=[0, 5])), tooltip=["photo_bucket", "avg_review_score", "n_orders"])
+                .properties(height=300)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    with col2:
+        st.subheader("Product description length vs review score")
+        if not description_df.empty:
+            chart = (
+                alt.Chart(description_df)
+                .mark_bar()
+                .encode(x=alt.X("description_bucket:N", sort=None), y=alt.Y("avg_review_score:Q", scale=alt.Scale(domain=[0, 5])), tooltip=["description_bucket", "avg_review_score", "n_orders"])
+                .properties(height=300)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    st.subheader("Market Basket Analysis: top category pairs bought together")
+    if not basket_df.empty:
+        st.dataframe(basket_df, use_container_width=True, hide_index=True)
+
+
 def main():
     st.title("Olist Sales OLAP Dashboard")
     st.caption("Multi-level view of Brazilian e-commerce sales: time, product category, customer state, delivery, and seller performance")
@@ -528,8 +938,11 @@ def main():
         st.warning("No data matches the selected filters.")
         return
 
-    tab_overview, tab_customers, tab_delivery, tab_sellers = st.tabs(
-        ["📊 Overview", "👥 Customers & Payments", "🚚 Delivery & Reviews", "🏪 Sellers (Pareto)"]
+    tab_overview, tab_customers, tab_delivery, tab_sellers, tab_routes, tab_products = st.tabs(
+        [
+            "📊 Overview", "👥 Customers & Payments", "🚚 Delivery & Reviews", "🏪 Sellers (Pareto)",
+            "🌍 Delivery Routes", "📦 Products & Basket",
+        ]
     )
 
     with tab_overview:
@@ -543,6 +956,12 @@ def main():
 
     with tab_sellers:
         render_sellers_tab()
+
+    with tab_routes:
+        render_routes_tab()
+
+    with tab_products:
+        render_products_tab()
 
 
 if __name__ == "__main__":
