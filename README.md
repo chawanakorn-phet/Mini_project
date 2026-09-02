@@ -149,6 +149,28 @@ erDiagram
 > หมายเหตุ: ตัดคำถามเรื่อง "ส่วนลด", "วิธีจัดส่ง (ประเภทขนส่ง)", และ "สินค้าคืน" ออกจากทั้งสองชุด เพราะ Olist dataset
 > ไม่มีข้อมูลเหล่านี้อยู่เลย (ไม่มีฟิลด์ discount, ไม่มี carrier/shipping-method, ไม่มีตาราง returns) ตอบไม่ได้จริงแม้จะปรับ query
 
+### คำถามแต่ละข้อใช้ Dimension/Measure ใดตอบ
+
+Query จริงของทุกข้ออยู่ที่ [`olist_dw/analyses/analytical_queries.sql`](olist_dw/analyses/analytical_queries.sql)
+
+| # | Dimension ที่ใช้ | Measure ที่ใช้ |
+|---|---|---|
+| 1 | `dim_products` | `COUNT(*)` (quantity), `SUM(price)` (revenue) |
+| 2 | `dim_date` | `SUM(price)`, `COUNT(order_id)` |
+| 3 | *(attribute: payment_type)* | `COUNT(order_id)`, `AVG(payment_value)` |
+| 4 | `dim_customers` | `SUM(price)` (monetary), `COUNT(order_id)` (frequency), `MAX(order_purchase_date)` (recency) |
+| 5 | `dim_customers` | `COUNT(order_id)`, `AVG(order_value)` |
+| 6 | `dim_customers`, `dim_date` | `COUNT(customer_unique_id)` |
+| 7 | `dim_date` *(order_estimated/delivered_date)* | `AVG(review_score)` |
+| 8 | `dim_products` | `SUM(freight_value)`, `SUM(price)` |
+| 9 | `dim_sellers`, `dim_customers` | `AVG(seller_processing_days)`, `AVG(carrier_transit_days)` |
+| 10 | `dim_customers`, `dim_sellers` | `AVG(buyer_seller_distance_km)`, `AVG(review_score)` |
+| 11 | `dim_products` | `SUM(price)`, `AVG(review_score)` |
+| 12 | `dim_products` | `product_photos_qty`, `product_name_length`, `product_description_length`, `AVG(review_score)` |
+| 13 | `dim_products` | `COUNT(*)` (co-occurrence ของ order_id) |
+| 14 | `dim_sellers` | `SUM(price)` |
+| 15 | `dim_sellers` | `AVG(seller_processing_days)`, `AVG(review_score)` |
+
 ---
 
 ## 3. Multidimensional Data Model Design
@@ -172,6 +194,24 @@ erDiagram
 | `fact_order_items` | 1 แถวต่อ 1 รายการสินค้าในออเดอร์ (order_id + order_item_id) | `price`, `freight_value`, `total_item_value`, `delivery_days`, `seller_processing_days`, `carrier_transit_days`, `order_purchase_hour`, `buyer_seller_distance_km` |
 | `fact_order_payments` | 1 แถวต่อ 1 การชำระเงิน (order_id + payment_sequential) | `payment_value`, `payment_installments` |
 | `fact_order_reviews` | 1 แถวต่อ 1 รีวิว (review_id) | `review_score`, `has_comment`, `response_hours` |
+
+### Measures & ประเภท (Additive / Semi-Additive / Non-Additive)
+
+| Measure | ตาราง | ประเภท | เหตุผล |
+|---|---|---|---|
+| `price` | fact_order_items | **Additive** | SUM ได้ตรงทุกมิติ (ตามเวลา/สินค้า/ลูกค้า/ผู้ขาย) → รายได้รวม |
+| `freight_value` | fact_order_items | **Additive** | SUM ได้ตรงทุกมิติ → ค่าขนส่งรวม |
+| `total_item_value` | fact_order_items | **Additive** | = price + freight_value, SUM ได้เหมือนกัน |
+| `delivery_days` | fact_order_items | **Non-Additive** | เป็นระยะเวลาต่อ 1 ออเดอร์ SUM ข้ามแถวไม่มีความหมาย ใช้ได้แค่ AVG/MIN/MAX |
+| `seller_processing_days` | fact_order_items | **Non-Additive** | เหมือน delivery_days — ใช้ AVG เท่านั้น |
+| `carrier_transit_days` | fact_order_items | **Non-Additive** | เหมือน delivery_days — ใช้ AVG เท่านั้น |
+| `buyer_seller_distance_km` | fact_order_items | **Non-Additive** | ระยะทางต่อ 1 รายการ SUM ไม่มีความหมาย ใช้ AVG |
+| `order_purchase_hour` | fact_order_items | **Non-Additive** | เป็นค่าหมวดหมู่เชิงเวลา (0-23) ใช้ GROUP BY ไม่ใช่ SUM |
+| `payment_value` | fact_order_payments | **Additive** | SUM ได้ทุกมิติ → ยอดชำระรวม |
+| `payment_installments` | fact_order_payments | **Non-Additive** | จำนวนงวด SUM ข้ามออเดอร์ไม่มีความหมาย ใช้ AVG |
+| `review_score` | fact_order_reviews | **Non-Additive** | เป็น ordinal scale (1-5) SUM ไม่มีความหมาย ใช้ AVG เท่านั้น |
+| `has_comment` | fact_order_reviews | **Semi-Additive** | เป็น flag (0/1) SUM ข้ามมิติอื่นได้ (นับจำนวนรีวิวที่มีคอมเมนต์) แต่ SUM ข้ามมิติเวลาแบบสะสมยังต้องระวังเรื่อง double count ถ้า join ผิด grain |
+| `response_hours` | fact_order_reviews | **Non-Additive** | ระยะเวลาต่อ 1 รีวิว ใช้ AVG เท่านั้น |
 
 ### Data Model Diagram (Star Schema)
 
