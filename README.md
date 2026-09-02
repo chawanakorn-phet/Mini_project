@@ -173,7 +173,7 @@ erDiagram
 | `fact_order_payments` | 1 แถวต่อ 1 การชำระเงิน (order_id + payment_sequential) | `payment_value`, `payment_installments` |
 | `fact_order_reviews` | 1 แถวต่อ 1 รีวิว (review_id) | `review_score`, `has_comment`, `response_hours` |
 
-### Data Model Diagram (Star / Galaxy Schema)
+### Data Model Diagram (Star Schema)
 
 ```mermaid
 erDiagram
