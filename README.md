@@ -377,7 +377,7 @@ streamlit run dashboard_app.py
 ```
 ---
 
-## 9. Deliverables
+## 8. Deliverables
 
 - **Infographic**: https://chawanakorn-phet.github.io/Mini_project/deliverables/infographic.html ([source](deliverables/infographic.html)) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
 - **Presentation**: https://canva.link/7srzw8z3nr335cp — สไลด์นำเสนอ
