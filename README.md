@@ -26,6 +26,7 @@ Olist เป็นแพลตฟอร์มมาร์เก็ตเพล�
 ### ER Diagram (Operational / OLTP)
 
 <img src="readme_images/ER%20diagram" width="700">
+
 ---
 
 ## 2. Business Questions (15 ข้อ)
