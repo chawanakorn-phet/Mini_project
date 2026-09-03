@@ -133,7 +133,7 @@ Query จริงของทุกข้ออยู่ที่ [`olist_dw/an
 ### Data Model Diagram (Star Schema)
 
 
-<img src="readme_images/star-schedma" width="700">
+<img src="readme_images/Star-schema" width="700">
 ---
 
 ## 4. ETL / ELT Process
