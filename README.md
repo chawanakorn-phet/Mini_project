@@ -11,17 +11,18 @@
 Olist เป็นแพลตฟอร์มมาร์เก็ตเพลสของบราซิลที่เชื่อมร้านค้า (sellers) เข้ากับลูกค้าทั่วประเทศ
 ชุดข้อมูลนี้เป็นข้อมูลธุรกรรมจริง (anonymized) ระหว่างปี 2016–2018 ประกอบด้วย 9 ตาราง:
 
-| ตาราง | คำอธิบาย | จำนวนแถว (โดยประมาณ) |
+| ตาราง | คำอธิบาย | จำนวนแถว |
 |---|---|---|
-| `olist_customers_dataset` | ข้อมูลลูกค้าและที่อยู่ (เมือง/รัฐ/zip) | 99,442 |
-| `olist_orders_dataset` | หัวออเดอร์ สถานะ และ timestamp แต่ละขั้นตอน | 99,442 |
-| `olist_order_items_dataset` | รายการสินค้าในแต่ละออเดอร์ ราคา/ค่าส่ง | 112,651 |
-| `olist_order_payments_dataset` | การชำระเงินของแต่ละออเดอร์ | 103,887 |
-| `olist_order_reviews_dataset` | คะแนนรีวิวและข้อความจากลูกค้า | 104,720 |
-| `olist_products_dataset` | แคตตาล็อกสินค้า หมวดหมู่ ขนาด/น้ำหนัก | 32,952 |
-| `olist_sellers_dataset` | ข้อมูลผู้ขายและที่อยู่ | 3,096 |
-| `olist_geolocation_dataset` | ตาราง lookup zip code → lat/lng/เมือง/รัฐ | 1,000,164 |
+| `olist_customers_dataset` | ข้อมูลลูกค้าและที่อยู่ (เมือง/รัฐ/zip) | 99,441 |
+| `olist_orders_dataset` | หัวออเดอร์ สถานะ และ timestamp แต่ละขั้นตอน | 99,441 |
+| `olist_order_items_dataset` | รายการสินค้าในแต่ละออเดอร์ ราคา/ค่าส่ง | 112,650 |
+| `olist_order_payments_dataset` | การชำระเงินของแต่ละออเดอร์ | 103,886 |
+| `olist_order_reviews_dataset` | คะแนนรีวิวและข้อความจากลูกค้า | 99,224 |
+| `olist_products_dataset` | แคตตาล็อกสินค้า หมวดหมู่ ขนาด/น้ำหนัก | 32,951 |
+| `olist_sellers_dataset` | ข้อมูลผู้ขายและที่อยู่ | 3,095 |
+| `olist_geolocation_dataset` | ตาราง lookup zip code → lat/lng/เมือง/รัฐ | 1,000,163 |
 | `product_category_name_translation` | แปลชื่อหมวดหมู่สินค้าจากโปรตุเกส → อังกฤษ | 71 |
+| **รวมทั้งหมด** | | **1,550,922** |
 
 ### ER Diagram (Operational / OLTP)
 
