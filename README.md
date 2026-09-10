@@ -400,7 +400,7 @@ dbt test --profiles-dir . --project-dir .    # 87 tests
 ## 7. Interactive Dashboard
 
 ```
-https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app
+[Dashboard](https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app/)
 ```
 
 สร้างด้วย **Streamlit + Altair** อ่านจาก `olist_dw/dev.duckdb` (`dim_*` / `fact_*` เท่านั้น)
