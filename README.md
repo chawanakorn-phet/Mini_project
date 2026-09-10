@@ -1,200 +1,496 @@
-# Mini Project: Data Warehouse & Big Data Analytics — Olist Brazilian E-Commerce
+# Mini Project — Data Warehouse & Multidimensional Data Model
+## Olist Brazilian E-Commerce (OLTP → OLAP)
 
-การออกแบบคลังข้อมูล (Data Warehouse) และโมเดลข้อมูลหลายมิติ (Multidimensional Data Model)
-เพื่อแปลงระบบ OLTP ของ [Olist Brazilian E-Commerce Public Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
-ให้กลายเป็นระบบ OLAP สำหรับตอบคำถามทางธุรกิจ
+การออกแบบและพัฒนา **Data Warehouse** พร้อม **Multidimensional Data Model** เพื่อแปลงระบบ
+OLTP ของตลาดกลางออนไลน์ [Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+ให้กลายเป็นระบบ OLAP ที่ตอบคำถามทางธุรกิจได้
+
+โครงสร้างที่ใช้คือ **Fact Constellation (Galaxy Schema)** — Fact 3 ตารางที่ grain ต่างกัน
+ใช้ Dimension ร่วมกัน (conformed) เพื่อให้ตอบคำถามที่ต้องข้าม business process ได้
+
+> **ข้อมูลจริง ไม่ใช่ข้อมูลสมมติ** — Olist เผยแพร่ธุรกรรมจริง (ทำ anonymize) ของคำสั่งซื้อ
+> ~100,000 รายการ ระหว่าง กันยายน 2016 – ตุลาคม 2018
 
 ---
 
-## 1. Operational Database
+## สารบัญ
 
-Olist เป็นแพลตฟอร์มมาร์เก็ตเพลสของบราซิลที่เชื่อมร้านค้า (sellers) เข้ากับลูกค้าทั่วประเทศ
-ชุดข้อมูลนี้เป็นข้อมูลธุรกรรมจริง (anonymized) ระหว่างปี 2016–2018 ประกอบด้วย 9 ตาราง:
+1. [ระบบ OLTP ต้นทาง + ER Diagram](#1-ระบบ-oltp-ต้นทาง)
+2. [คำถามทางธุรกิจ 15 ข้อ](#2-คำถามทางธุรกิจ-15-ข้อ)
+3. [Multidimensional Data Model](#3-multidimensional-data-model)
+4. [Data Model Diagram (Galaxy Schema)](#4-data-model-diagram--galaxy-schema)
+5. [กระบวนการ ELT](#5-กระบวนการ-elt)
+6. [Data Warehouse Database + Analytical Queries](#6-data-warehouse-database)
+7. [Interactive Dashboard](#7-interactive-dashboard)
+8. [Team Contribution](#8-team-contribution)
+9. [โครงสร้าง Repository + วิธีรัน](#9-โครงสร้าง-repository--วิธีรัน)
+10. [Presentation](#10-presentation)
 
-| ตาราง | คำอธิบาย | จำนวนแถว |
-|---|---|---|
-| `olist_customers_dataset` | ข้อมูลลูกค้าและที่อยู่ (เมือง/รัฐ/zip) | 99,441 |
-| `olist_orders_dataset` | หัวออเดอร์ สถานะ และ timestamp แต่ละขั้นตอน | 99,441 |
-| `olist_order_items_dataset` | รายการสินค้าในแต่ละออเดอร์ ราคา/ค่าส่ง | 112,650 |
-| `olist_order_payments_dataset` | การชำระเงินของแต่ละออเดอร์ | 103,886 |
-| `olist_order_reviews_dataset` | คะแนนรีวิวและข้อความจากลูกค้า | 99,224 |
-| `olist_products_dataset` | แคตตาล็อกสินค้า หมวดหมู่ ขนาด/น้ำหนัก | 32,951 |
-| `olist_sellers_dataset` | ข้อมูลผู้ขายและที่อยู่ | 3,095 |
-| `olist_geolocation_dataset` | ตาราง lookup zip code → lat/lng/เมือง/รัฐ | 1,000,163 |
-| `product_category_name_translation` | แปลชื่อหมวดหมู่สินค้าจากโปรตุเกส → อังกฤษ | 71 |
+---
+
+## 1. ระบบ OLTP ต้นทาง
+
+Olist เป็นแพลตฟอร์มมาร์เก็ตเพลสของบราซิลที่เชื่อมร้านค้ารายย่อย (sellers) กับลูกค้าทั่วประเทศ
+ระบบปฏิบัติการของ Olist บันทึกธุรกรรมตลอดวงจร **สั่งซื้อ → ชำระเงิน → จัดส่ง → รีวิว**
+ประกอบด้วย 9 ตาราง:
+
+| ตาราง | ธุรกรรม/ข้อมูลที่บันทึก | จำนวนแถว |
+|---|---|---:|
+| `olist_customers_dataset` | ลูกค้า (1 แถว = 1 `customer_id` ต่อ 1 คำสั่งซื้อ) + ที่อยู่ | 99,441 |
+| `olist_orders_dataset` | หัวคำสั่งซื้อ สถานะ และ timestamp 5 จุดของวงจร | 99,441 |
+| `olist_order_items_dataset` | รายการสินค้าในคำสั่งซื้อ ราคา ค่าจัดส่ง | 112,650 |
+| `olist_order_payments_dataset` | การชำระเงิน (1 คำสั่งซื้อจ่ายได้หลายครั้ง/หลายวิธี) | 103,886 |
+| `olist_order_reviews_dataset` | แบบสอบถามความพอใจหลังได้รับสินค้า (คะแนน 1–5) | 99,224 |
+| `olist_products_dataset` | แคตตาล็อกสินค้า หมวดหมู่ ขนาด น้ำหนัก จำนวนรูป | 32,951 |
+| `olist_sellers_dataset` | ผู้ขายและที่ตั้ง | 3,095 |
+| `olist_geolocation_dataset` | lookup `zip prefix → lat/lng/เมือง/รัฐ` (ซ้ำหลายแถวต่อ zip) | 1,000,163 |
+| `product_category_name_translation` | แปลชื่อหมวดหมู่ โปรตุเกส → อังกฤษ | 71 |
 | **รวมทั้งหมด** | | **1,550,922** |
 
-### ER Diagram (Operational / OLTP)
+### ตารางเวลา (Temporal columns)
 
-<img src="readme_images/ER%20diagram" width="700">
+ตาราง `orders` มี timestamp **5 จุด** ครบทั้งวงจรออเดอร์ — เป็นจุดแข็งของชุดข้อมูลนี้และเป็นที่มา
+ของ `dim_date` ที่ทำหน้าที่ **role-playing 5 บทบาท** และ measure ด้านเวลาทั้งหมด
+
+| คอลัมน์ | ความหมาย |
+|---|---|
+| `order_purchase_timestamp` | ลูกค้ากดสั่ง |
+| `order_approved_at` | อนุมัติการชำระเงิน |
+| `order_delivered_carrier_date` | ร้านส่งของให้บริษัทขนส่ง |
+| `order_delivered_customer_date` | ลูกค้าได้รับสินค้าจริง |
+| `order_estimated_delivery_date` | วันที่ระบบสัญญาว่าจะถึง |
+
+นอกจากนี้ `order_reviews` มี `review_creation_date` และ `review_answer_timestamp`
+
+### ER Diagram (OLTP)
+
+```mermaid
+erDiagram
+    CUSTOMERS ||--o{ ORDERS : places
+    ORDERS ||--|{ ORDER_ITEMS : contains
+    ORDERS ||--o{ ORDER_PAYMENTS : "paid by"
+    ORDERS ||--o{ ORDER_REVIEWS : "reviewed by"
+    PRODUCTS ||--o{ ORDER_ITEMS : "sold as"
+    SELLERS ||--o{ ORDER_ITEMS : "fulfilled by"
+    CATEGORY_TRANSLATION ||--o{ PRODUCTS : translates
+    GEOLOCATION ||--o{ CUSTOMERS : "zip locates"
+    GEOLOCATION ||--o{ SELLERS : "zip locates"
+
+    CUSTOMERS {
+        string customer_id PK
+        string customer_unique_id
+        string customer_zip_code_prefix FK
+        string customer_city
+        string customer_state
+    }
+    ORDERS {
+        string order_id PK
+        string customer_id FK
+        string order_status
+        timestamp order_purchase_timestamp
+        timestamp order_approved_at
+        timestamp order_delivered_carrier_date
+        timestamp order_delivered_customer_date
+        timestamp order_estimated_delivery_date
+    }
+    ORDER_ITEMS {
+        string order_id PK,FK
+        int order_item_id PK
+        string product_id FK
+        string seller_id FK
+        timestamp shipping_limit_date
+        float price
+        float freight_value
+    }
+    ORDER_PAYMENTS {
+        string order_id PK,FK
+        int payment_sequential PK
+        string payment_type
+        int payment_installments
+        float payment_value
+    }
+    ORDER_REVIEWS {
+        string review_id PK
+        string order_id PK,FK
+        int review_score
+        string review_comment_message
+        timestamp review_creation_date
+        timestamp review_answer_timestamp
+    }
+    PRODUCTS {
+        string product_id PK
+        string product_category_name FK
+        int product_photos_qty
+        int product_weight_g
+        int product_length_cm
+        int product_height_cm
+        int product_width_cm
+    }
+    SELLERS {
+        string seller_id PK
+        string seller_zip_code_prefix FK
+        string seller_city
+        string seller_state
+    }
+    GEOLOCATION {
+        string geolocation_zip_code_prefix PK
+        float geolocation_lat
+        float geolocation_lng
+        string geolocation_city
+        string geolocation_state
+    }
+    CATEGORY_TRANSLATION {
+        string product_category_name PK
+        string product_category_name_english
+    }
+```
+
+**ศูนย์กลางของ OLTP คือ `orders`** — มี child 3 ตารางที่ grain ต่างกัน (`order_items` = รายบรรทัดสินค้า,
+`order_payments` = รายการชำระเงิน, `order_reviews` = รายรีวิว) ทั้งสามนี้กลายเป็น 3 Fact ใน warehouse
+ส่วน `geolocation` และ `category_translation` เป็น lookup ที่ถูกยุบเข้า dimension ตอน transform
+
 ---
 
-## 2. Business Questions (15 ข้อ)
+## 2. คำถามทางธุรกิจ 15 ข้อ
 
-คัดและรวมจากคำถามธุรกิจ 2 ชุดที่ทีมช่วยกันคิด (ตัดข้อซ้ำและข้อที่ dataset ตอบไม่ได้จริงออก) จัดกลุ่มเป็น 5 ด้านทางธุรกิจ
-ทุกข้อตอบได้จริงจากตาราง `dim_*`/`fact_*` ที่ออกแบบไว้ในหัวข้อ 3
-
-**การเติบโตและยอดขาย (Sales & Revenue Growth)**
-
-1. หมวดหมู่สินค้าใดขายดีที่สุด ทั้งในแง่จำนวนชิ้นที่ขายและรายได้รวม — ผลลัพธ์ตรงกันหรือคนละหมวดหมู่กัน?
-2. ช่วงวันและเวลาใดที่มียอดสั่งซื้อสูงสุด และแนวโน้มรายได้รวมรายเดือน (MoM Growth) ของแพลตฟอร์มเติบโตขึ้นหรือลดลงอย่างไร?
-3. วิธีการชำระเงินแบบใดถูกใช้งานมากที่สุด และแบบใดดันค่าเฉลี่ยต่อคำสั่งซื้อ (AOV) สูงที่สุด?
-
-**พฤติกรรมและกลุ่มลูกค้า (Customer Behavior & Segmentation)**
-
-4. สัดส่วนลูกค้าที่กลับมาซื้อซ้ำ (Repeat Customers) มีกี่ % และถ้านำมาทำ RFM Analysis กลุ่มลูกค้าระดับ Top ทำรายได้ให้แพลตฟอร์มมากขนาดไหน?
-5. ลูกค้าที่ซื้อบ่อย (frequent) มีค่าใช้จ่ายเฉลี่ยต่อครั้งต่างจากลูกค้าทั่วไปเท่าไร?
-6. ลูกค้าส่วนใหญ่อยู่ในรัฐหรือเมืองไหนกันแน่ และพื้นที่ใดคือ "ตลาดใหม่" ที่มียอดเติบโตของลูกค้าใหม่เร็วที่สุด?
-
-**ประสิทธิภาพการจัดส่ง (Logistics & Delivery Operations)**
-
-7. ระยะเวลาส่งจริงเทียบกับวันที่ระบบคาดการณ์ไว้ (Estimated Date) คลาดเคลื่อนกี่วัน และการส่งช้ากระทบต่อคะแนนรีวิวมากแค่ไหน?
-8. ค่าจัดส่ง (Freight Value) คิดเป็นสัดส่วนกี่ % ของราคาสินค้า และหมวดหมู่ใดมีค่าจัดส่งสูงจนกระทบยอดขาย?
-9. ปัญหาจัดส่งล่าช้า (Late Delivery) กระจุกตัวอยู่ในเส้นทางระหว่างรัฐใดมากที่สุด และเกิดจากฝั่งร้านค้า (เตรียมสินค้าช้า) หรือฝั่งขนส่ง (ระหว่างทางช้า)?
-10. ระยะทางระหว่างตำแหน่งผู้ขายและผู้ซื้อส่งผลต่อคะแนนรีวิวของลูกค้าหรือไม่?
-
-**สินค้าและการทำโปรโมชัน (Product Performance & Marketing)**
-
-11. หมวดหมู่สินค้าใดทำรายได้สูงสุด เทียบกับหมวดหมู่ที่ได้คะแนนรีวิวเฉลี่ยต่ำที่สุด — และสินค้าที่รีวิวสูงขายดีกว่าจริงหรือไม่?
-12. องค์ประกอบหน้าสินค้า เช่น จำนวนรูปภาพ ความยาวชื่อ หรือความยาวคำบรรยาย ส่งผลต่อยอดขายและคะแนนรีวิวหรือไม่?
-13. สินค้าชนิดใดที่มักถูกสั่งซื้อร่วมกันบ่อยๆ (Market Basket Analysis) เพื่อนำไปจัดชุดโปรโมชัน Cross-selling?
-
-**การคัดกรองและบริหารผู้ขาย (Seller Operations & Quality Control)**
-
-14. ยอดขายรวมของแพลตฟอร์มกระจุกตัวอยู่กับผู้ขายกลุ่ม Top 10% ตามกฎ Pareto (80/20) หรือไม่?
-15. ความเร็วในการเตรียมสินค้าและส่งมอบให้ขนส่ง (Fulfillment Speed) ของผู้ขายส่งผลต่อคะแนนรีวิวร้านค้าอย่างไร และร้านที่รีวิวต่ำมีพฤติกรรมร่วมอะไรบ้าง (ส่งช้า/อัตรายกเลิกสูง)?
-
----
-
-### คำถามแต่ละข้อใช้ Dimension/Measure ใดตอบ
-
+ออกแบบ **ย้อนจากโมเดล** — ทุกข้อระบุชัดว่าตอบด้วย Fact ใด เดินผ่าน Dimension ใด และวัดด้วย Measure ใด
 Query จริงของทุกข้ออยู่ที่ [`olist_dw/analyses/analytical_queries.sql`](olist_dw/analyses/analytical_queries.sql)
 
-| # | Dimension ที่ใช้ | Measure ที่ใช้ |
-|---|---|---|
-| 1 | `dim_products` | `COUNT(*)` (quantity), `SUM(price)` (revenue) |
-| 2 | `dim_date` | `SUM(price)`, `COUNT(order_id)` |
-| 3 | *(attribute: payment_type)* | `COUNT(order_id)`, `AVG(payment_value)` |
-| 4 | `dim_customers` | `SUM(price)` (monetary), `COUNT(order_id)` (frequency), `MAX(order_purchase_date)` (recency) |
-| 5 | `dim_customers` | `COUNT(order_id)`, `AVG(order_value)` |
-| 6 | `dim_customers`, `dim_date` | `COUNT(customer_unique_id)` |
-| 7 | `dim_date` *(order_estimated/delivered_date)* | `AVG(review_score)` |
-| 8 | `dim_products` | `SUM(freight_value)`, `SUM(price)` |
-| 9 | `dim_sellers`, `dim_customers` | `AVG(seller_processing_days)`, `AVG(carrier_transit_days)` |
-| 10 | `dim_customers`, `dim_sellers` | `AVG(buyer_seller_distance_km)`, `AVG(review_score)` |
-| 11 | `dim_products` | `SUM(price)`, `AVG(review_score)` |
-| 12 | `dim_products` | `product_photos_qty`, `product_name_length`, `product_description_length`, `AVG(review_score)` |
-| 13 | `dim_products` | `COUNT(*)` (co-occurrence ของ order_id) |
-| 14 | `dim_sellers` | `SUM(price)` |
-| 15 | `dim_sellers` | `AVG(seller_processing_days)`, `AVG(review_score)` |
+### กลุ่ม A — ยอดขายและรายได้
+1. หมวดหมู่สินค้าใดทำรายได้และขายได้จำนวนชิ้นมากที่สุด — อันดับตรงกันหรือไม่?
+2. รายได้รายเดือนเติบโตอย่างไร (MoM Growth) และช่วงชั่วโมงใดมีคำสั่งซื้อสูงสุด?
+3. วิธีการชำระเงินแบบใดถูกใช้มากที่สุด และแบบใดมีมูลค่าเฉลี่ยต่อรายการสูงสุด?
+4. การผ่อนชำระ (instalments) สัมพันธ์กับขนาดตะกร้าสินค้าหรือไม่?
 
----
+### กลุ่ม B — ลูกค้า
+5. สัดส่วนลูกค้าที่กลับมาซื้อซ้ำมีเท่าไร และคิดเป็นรายได้กี่ %?
+6. รายได้กระจุกตัวอยู่กับลูกค้ากลุ่ม Top 10% ตามกฎ Pareto (80/20) หรือไม่?
 
-## 3. Multidimensional Data Model Design
+### กลุ่ม C — ภูมิศาสตร์
+7. ภูมิภาคและรัฐใดสร้างรายได้มากที่สุด และค่าเฉลี่ยต่อคำสั่งซื้อต่างกันอย่างไร?
+8. ระยะทางระหว่างผู้ซื้อกับผู้ขายส่งผลต่อคะแนนรีวิวหรือไม่?
 
-โครงสร้างนี้เป็น **Fact Constellation (Galaxy Schema)** — มี Fact 3 ตารางใช้ Dimension ร่วมกัน (conformed dimensions)
-เพื่อรองรับคำถามทางธุรกิจทั้ง 15 ข้อข้างต้น
+### กลุ่ม D — การจัดส่ง
+9. เวลาจัดส่งเฉลี่ยกี่วัน และแบ่งเป็น "ร้านเตรียมของ" กับ "ขนส่งวิ่ง" อย่างละเท่าไร?
+10. อัตราการส่งช้ากว่ากำหนดในแต่ละภูมิภาคเป็นเท่าไร และช้าเฉลี่ยกี่วัน?
 
-### Dimensions
+### กลุ่ม E — สินค้าและปฏิบัติการ
+11. หมวดหมู่ใดมีค่าจัดส่งคิดเป็นสัดส่วนของราคาสินค้าสูงที่สุด?
+12. คำสั่งซื้อหลุดออกจากวงจรตรงไหน — สัดส่วนสถานะออเดอร์และรายได้ที่ค้างในสถานะยังไม่ส่งมอบ?
 
-| Dimension | Level (จากละเอียด → หยาบ) | คำอธิบาย |
-|---|---|---|
-| `dim_date` | Day → Month → Quarter → Year | สร้างจาก `order_purchase_timestamp`, ใช้แจกแจงตามเวลา |
-| `dim_customers` | Customer → City → State | grain = 1 แถวต่อ 1 `customer_id`, เก็บ `customer_unique_id` (สำหรับ repeat/RFM analysis) และพิกัด `avg_lat`/`avg_lng` (สำหรับคำนวณระยะทาง) |
-| `dim_sellers` | Seller → City → State | grain = 1 แถวต่อ 1 `seller_id`, มีพิกัด `avg_lat`/`avg_lng` เช่นกัน |
-| `dim_products` | Product → Category (English) | grain = 1 แถวต่อ 1 `product_id`, แปลชื่อหมวดหมู่เป็นอังกฤษ พร้อม `product_photos_qty`, `product_name_length`, `product_description_length` สำหรับวิเคราะห์ผลของหน้าสินค้าต่อยอดขาย |
+### กลุ่ม F — Drill-Across (ต้องใช้ 2 Fact ตอบ)
+13. ยอดที่ลูกค้าจ่ายจริงตรงกับมูลค่าสินค้าในตะกร้าหรือไม่ และช่องว่างขยายตามจำนวนงวดผ่อนไหม? *(items + payments)*
+14. การส่งช้าทำให้คะแนนรีวิวลดลงเท่าไร และยิ่งช้ามากยิ่งแย่ลงหรือไม่? *(items + reviews)*
+15. ลูกค้าที่ผ่อนชำระพอใจมากหรือน้อยกว่าลูกค้าที่จ่ายเต็ม? *(payments + reviews)*
 
-### Fact Tables
+### ตารางเชื่อมโยง คำถาม → Fact / Dimension / Measure
 
-| Fact | Grain | Measures |
-|---|---|---|
-| `fact_order_items` | 1 แถวต่อ 1 รายการสินค้าในออเดอร์ (order_id + order_item_id) | `price`, `freight_value`, `total_item_value`, `delivery_days`, `seller_processing_days`, `carrier_transit_days`, `order_purchase_hour`, `buyer_seller_distance_km` |
-| `fact_order_payments` | 1 แถวต่อ 1 การชำระเงิน (order_id + payment_sequential) | `payment_value`, `payment_installments` |
-| `fact_order_reviews` | 1 แถวต่อ 1 รีวิว (review_id) | `review_score`, `has_comment`, `response_hours` |
-
-### Measures & ประเภท (Additive / Semi-Additive / Non-Additive)
-
-| Measure | ตาราง | ประเภท | เหตุผล |
+| # | Fact | Dimension ที่เดินผ่าน | Measure ที่วัด |
 |---|---|---|---|
-| `price` | fact_order_items | **Additive** | SUM ได้ตรงทุกมิติ (ตามเวลา/สินค้า/ลูกค้า/ผู้ขาย) → รายได้รวม |
-| `freight_value` | fact_order_items | **Additive** | SUM ได้ตรงทุกมิติ → ค่าขนส่งรวม |
-| `total_item_value` | fact_order_items | **Additive** | = price + freight_value, SUM ได้เหมือนกัน |
-| `delivery_days` | fact_order_items | **Non-Additive** | เป็นระยะเวลาต่อ 1 ออเดอร์ SUM ข้ามแถวไม่มีความหมาย ใช้ได้แค่ AVG/MIN/MAX |
-| `seller_processing_days` | fact_order_items | **Non-Additive** | เหมือน delivery_days — ใช้ AVG เท่านั้น |
-| `carrier_transit_days` | fact_order_items | **Non-Additive** | เหมือน delivery_days — ใช้ AVG เท่านั้น |
-| `buyer_seller_distance_km` | fact_order_items | **Non-Additive** | ระยะทางต่อ 1 รายการ SUM ไม่มีความหมาย ใช้ AVG |
-| `order_purchase_hour` | fact_order_items | **Non-Additive** | เป็นค่าหมวดหมู่เชิงเวลา (0-23) ใช้ GROUP BY ไม่ใช่ SUM |
-| `payment_value` | fact_order_payments | **Additive** | SUM ได้ทุกมิติ → ยอดชำระรวม |
-| `payment_installments` | fact_order_payments | **Non-Additive** | จำนวนงวด SUM ข้ามออเดอร์ไม่มีความหมาย ใช้ AVG |
-| `review_score` | fact_order_reviews | **Non-Additive** | เป็น ordinal scale (1-5) SUM ไม่มีความหมาย ใช้ AVG เท่านั้น |
-| `has_comment` | fact_order_reviews | **Semi-Additive** | เป็น flag (0/1) SUM ข้ามมิติอื่นได้ (นับจำนวนรีวิวที่มีคอมเมนต์) แต่ SUM ข้ามมิติเวลาแบบสะสมยังต้องระวังเรื่อง double count ถ้า join ผิด grain |
-| `response_hours` | fact_order_reviews | **Non-Additive** | ระยะเวลาต่อ 1 รีวิว ใช้ AVG เท่านั้น |
-
-### Data Model Diagram (Star Schema)
-
-
-<img src="readme_images/Star-schema" width="700">
----
-
-## 4. ETL / ELT Process
-
-ใช้แนวทาง **ELT** ผ่าน [dbt](https://www.getdbt.com/) + [DuckDB](https://duckdb.org/):
-
-1. **Extract**: ไฟล์ CSV ทั้ง 9 ไฟล์จาก Kaggle ถูกวางไว้ที่ `olist_dw/datasets/`
-2. **Load**: dbt-duckdb ประกาศแต่ละไฟล์เป็น `source` (ผ่าน `external_location` meta ใน `src_olist.yml`)
-   ทำให้ DuckDB อ่านข้อมูลดิบเข้ามาได้โดยตรงโดยไม่ต้องเขียนสคริปต์โหลดแยก
-3. **Transform (Staging layer)**: โมเดล `stg_*.sql` ดึงข้อมูลจาก source แบบ 1:1 พร้อมเติมคอลัมน์
-   `ingestion_timestamp` เพื่อบันทึกเวลาที่โหลดข้อมูล — materialize เป็น `table`
-4. **Transform (Data Warehouse layer)**: โมเดลใน `models/datawarehouse/`
-   - สร้าง `dim_*` โดย deduplicate ด้วย `ROW_NUMBER()` และ enrich ข้อมูล (เช่น join `geolocation`
-     เพื่อหา lat/lng เฉลี่ยของแต่ละ zip code, join `product_category_name_translation`
-     เพื่อแปลชื่อหมวดหมู่)
-   - สร้าง `fact_*` โดย join กับ `stg_orders` เพื่อดึง `customer_id`/วันที่ แล้วคำนวณ measure
-     เช่น `total_item_value`, `delivery_days`
-   - ทดสอบคุณภาพข้อมูลด้วย `dbt test` (unique/not_null บน primary key ของแต่ละตาราง)
-5. **Serve**: ผลลัพธ์เก็บใน `olist_dw/dev.duckdb` เปิดดูผ่าน `app.py` (table browser)
-   และวิเคราะห์ผ่าน `dashboard_app.py` (OLAP dashboard)
+| 1 | `fact_order_items` | `dim_products` (category) | `SUM(price)`, `COUNT(*)` |
+| 2 | `fact_order_items` | `dim_date` (year_month, purchase_hour) | `SUM(price)`, `COUNT(DISTINCT order_id)` |
+| 3 | `fact_order_payments` | `dim_payment_type` | `COUNT(DISTINCT order_id)`, `AVG(payment_value)` |
+| 4 | `fact_order_payments` | (payment_installments banded) | `AVG(payment_value)` |
+| 5 | `fact_order_items` | `dim_customers` (customer_unique_id) | `COUNT(DISTINCT order_id)`, `SUM(price)` |
+| 6 | `fact_order_items` | `dim_customers` | `SUM(price)` + cumulative window |
+| 7 | `fact_order_items` | `dim_geography` (region → state) | `SUM(price)`, `AVG` per order |
+| 8 | `fact_order_items` + `fact_order_reviews` | `dim_geography` ×2 (buyer, seller) | `AVG(buyer_seller_distance_km)`, `AVG(review_score)` |
+| 9 | `fact_order_items` | `dim_date` (purchased/carrier/delivered) | `AVG(delivery_days / seller_processing_days / carrier_transit_days)` |
+| 10 | `fact_order_items` | `dim_date` (delivered vs estimated), `dim_geography` | `AVG(is_late_delivery)`, `AVG(delivery_delay_days)` |
+| 11 | `fact_order_items` | `dim_products` (category, size_band) | `SUM(freight_value) / SUM(price)` |
+| 12 | `fact_order_items` | `dim_order_status` (lifecycle_step) | `COUNT(DISTINCT order_id)`, `SUM(price)` |
+| 13 | `fact_order_items` **+** `fact_order_payments` | conformed: order, `dim_date` | `SUM(total_item_value)` vs `SUM(payment_value)` |
+| 14 | `fact_order_items` **+** `fact_order_reviews` | conformed: order, `dim_customers`, `dim_date` | `AVG(delivery_delay_days)`, `AVG(review_score)` |
+| 15 | `fact_order_payments` **+** `fact_order_reviews` | conformed: order, `dim_customers`, `dim_date` | `AVG(payment_installments)`, `AVG(review_score)` |
 
 ---
 
-## 5. Data Warehouse Database
+## 3. Multidimensional Data Model
 
-ไฟล์ผลลัพธ์: `olist_dw/dev.duckdb` (สร้างจากการรัน `dbt run` ภายในโฟลเดอร์ `olist_dw/`)
-ประกอบด้วย 9 staging tables + 4 dimension tables + 3 fact tables รวม 16 ตาราง
+### 3.1 Dimensions (7 ตาราง)
+
+ทุก dimension มี **surrogate key** (สร้างด้วย `ROW_NUMBER()`) เป็น primary key และเก็บ business key
+เดิมไว้ต่างหาก + มี **Unknown member (key = -1)** สำหรับกรณี fact อ้างถึงค่าที่ไม่มี เพื่อไม่ให้แถว fact
+หายไปจากการ join
+
+| Dimension | Grain | Level / ลำดับชั้น (ละเอียด → หยาบ) | บทบาทพิเศษ |
+|---|---|---|---|
+| `dim_date` | 1 วัน (2016–2018) | Day → Month → Quarter → Year (+ fiscal_year, week) | **Conformed** ทั้ง 3 facts; **Role-playing** 5 บทบาทใน `fact_order_items`, 3 ใน `fact_order_reviews` |
+| `dim_geography` | 1 zip code prefix | Zip → City → State → Region (5 ภูมิภาคทางการของบราซิล) | **Conformed** ทั้ง 3 facts; **Role-playing** 2 บทบาท (ที่อยู่ลูกค้า/ผู้ขาย) ใน `fact_order_items` |
+| `dim_customers` | 1 `customer_id` | Customer → City → State (+ `customer_unique_id` สำหรับ repeat/RFM) | **Conformed** ทั้ง 3 facts |
+| `dim_sellers` | 1 `seller_id` | Seller → City → State | ใช้ใน `fact_order_items` |
+| `dim_products` | 1 `product_id` | Product → Category (แปลอังกฤษ) ; + `size_band` (Small/Medium/Large) | ใช้ใน `fact_order_items` |
+| `dim_order_status` | 1 สถานะ | สถานะ + `lifecycle_step` (1–8) + flag `is_delivered` / `is_cancelled` | **Conformed** ทั้ง 3 facts |
+| `dim_payment_type` | 1 วิธีชำระเงิน | วิธีชำระเงิน + flag `supports_instalments` / `is_valid_method` | ใช้ใน `fact_order_payments` |
+
+> **`dim_geography` คือการเปลี่ยนแปลงหลักจากโมเดลเดิม** — เดิมที่อยู่ลูกค้ากับผู้ขายเป็นคอลัมน์กระจัดกระจาย
+> อยู่คนละตาราง ทำให้ "รัฐที่ซื้อ" กับ "รัฐที่ขาย" นับกันคนละแบบ ตอนนี้ยุบตาราง geolocation 1 ล้านแถว
+> ให้เหลือ 1 พิกัดต่อ zip แล้วให้ทั้งสองฝั่งชี้มาที่ dimension เดียวกัน → คำนวณระยะทางผู้ซื้อ–ผู้ขายได้ (ข้อ 8)
+
+### 3.2 Fact Tables (3 ตาราง)
+
+| Fact | Grain (1 แถว = อะไร) | เชื่อม Dimension | ตอบคำถาม |
+|---|---|---|---|
+| `fact_order_items` | 1 รายการสินค้าในคำสั่งซื้อ (`order_id` + `order_item_id`) | **6 dims / 11 FK** (dim_date ×5, dim_geography ×2, products, customers, sellers, order_status) | 1,2,5–12,13,14 |
+| `fact_order_payments` | 1 รายการชำระเงิน (`order_id` + `payment_sequential`) | 4 dims (dim_date, customers, geography, order_status) + payment_type | 3,4,13,15 |
+| `fact_order_reviews` | 1 รีวิวต่อคำสั่งซื้อ (`review_id` + `order_id`) | 3 dims (dim_date ×3, customers, geography, order_status) | 8,14,15 |
+
+> **กับดัก grain ที่เจอจริง:** `review_id` เพียงอย่างเดียว **ไม่ใช่ grain** — Olist ใช้ `review_id` เดียว
+> ครอบหลาย order เมื่อ 1 แบบสอบถามครอบหลายการซื้อ (789 review_id ครอบ 1,412 order) การ dedup ด้วย
+> `review_id` อย่างเดียวจะทำให้ **หายไป 814 แถว** grain ที่ถูกต้องคือคู่ `(review_id, order_id)` ซึ่ง unique
+> พอดี 99,224 แถว — มี test `assert_fact_order_reviews_grain_is_unique.sql` ล็อกไว้
+
+### 3.3 Measures และประเภท (Additivity)
+
+| Measure | Fact | ประเภท | เหตุผล |
+|---|---|---|---|
+| `price` | items | **Additive** | รวมได้ทุกมิติ → รายได้สินค้า |
+| `freight_value` | items | **Additive** | รวมได้ทุกมิติ → ค่าขนส่งรวม |
+| `total_item_value` | items | **Additive** | = `price + freight_value` |
+| `payment_value` | payments | **Additive** | รวมได้ทุกมิติ → ยอดชำระรวม |
+| `is_late_delivery` (0/1) | items | **Semi-Additive** | นับได้ (จำนวนออเดอร์ที่ส่งช้า) แต่ต้องระวัง grain เมื่อ join |
+| `has_comment` / `is_positive` / `is_negative` (0/1) | reviews | **Semi-Additive** | นับได้ภายในชุดรีวิวที่กำหนด |
+| `delivery_days`, `seller_processing_days`, `carrier_transit_days`, `delivery_delay_days` | items | **Non-Additive** | ระยะเวลาต่อ 1 ออเดอร์ — ใช้ `AVG` / `MIN` / `MAX` เท่านั้น |
+| `buyer_seller_distance_km` | items | **Non-Additive** | ระยะทางต่อ 1 รายการ — ใช้ `AVG` |
+| `purchase_hour` (0–23) | items | **Non-Additive** | ค่าหมวดหมู่เชิงเวลา — ใช้ `GROUP BY` |
+| `payment_installments` | payments | **Non-Additive** | จำนวนงวด — ใช้ `AVG` |
+| `review_score` (1–5) | reviews | **Non-Additive** | ordinal scale — ใช้ `AVG` เท่านั้น |
+| `response_hours` | reviews | **Non-Additive** | ระยะเวลาต่อ 1 รีวิว — ใช้ `AVG` |
 
 ---
 
-## 6. Interactive Dashboard
+## 4. Data Model Diagram — Galaxy Schema
 
-`dashboard_app.py` (Streamlit + Altair) วิเคราะห์ยอดขายจาก `fact_order_items` join กับ
-`dim_date`, `dim_customers`, `dim_products`, `dim_sellers` เท่านั้น ตามที่โจทย์กำหนด
-รองรับการกรองตามช่วงวันที่ หมวดหมู่สินค้า รัฐลูกค้า รัฐผู้ขาย และสถานะออเดอร์
-พร้อมมุมมองยอดขายตามเวลา (ปี/ไตรมาส/เดือน), ตาม product category, และตาม customer state
+```mermaid
+graph TB
+    subgraph "Conformed Dimensions (ใช้ร่วมกันทั้ง 3 Fact)"
+        DD[dim_date<br/>role-play: purchased / approved /<br/>to-carrier / delivered / promised /<br/>review-created / review-answered]
+        DG[dim_geography<br/>role-play: buyer location / seller location<br/>Zip → City → State → Region]
+        DC[dim_customers<br/>customer_id + customer_unique_id]
+        DOS[dim_order_status<br/>lifecycle_step 1–8]
+    end
 
-🔗 **Live**: https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app
+    subgraph "Fact Constellation"
+        FI[["fact_order_items<br/>grain: order_id + order_item_id<br/>112,650 แถว"]]
+        FP[["fact_order_payments<br/>grain: order_id + payment_sequential<br/>103,886 แถว"]]
+        FR[["fact_order_reviews<br/>grain: review_id + order_id<br/>99,224 แถว"]]
+    end
+
+    subgraph "Local Dimensions"
+        DP[dim_products<br/>Product → Category]
+        DS[dim_sellers<br/>Seller → City → State]
+        DPT[dim_payment_type]
+    end
+
+    DD --- FI
+    DD --- FP
+    DD --- FR
+    DG --- FI
+    DG --- FP
+    DG --- FR
+    DC --- FI
+    DC --- FP
+    DC --- FR
+    DOS --- FI
+    DOS --- FP
+    DOS --- FR
+    DP --- FI
+    DS --- FI
+    DPT --- FP
+
+    FI -. "order_id" .- FP
+    FI -. "order_id" .- FR
+    FP -. "order_id" .- FR
+```
+
+### ทำไมต้องเป็น Galaxy Schema (ไม่ใช่ Star เดียว)
+
+มี **3 business process ที่ grain ต่างกัน** — 1 บรรทัดสินค้า ≠ 1 การชำระเงิน ≠ 1 รีวิว
+ถ้ายัดทั้งหมดลง fact เดียว measure จะซ้ำและ SUM ผิด (เช่น รีวิว 1 อันจะถูกนับซ้ำตามจำนวนสินค้าในออเดอร์)
+
+และมีคำถามที่ **fact เดียวตอบไม่ได้** (ข้อ 13–15) ต้อง aggregate 2 fact แยกกันไปที่ grain ร่วม
+แล้ว join ผ่าน **conformed dimension** — นี่คือ **drill-across** ซึ่งเป็นเหตุผลตรงตัวว่าทำไม galaxy schema
+ต้องมีอยู่ ตัวอย่าง:
+
+| คำถาม | Fact A | Fact B | เชื่อมผ่าน conformed dim |
+|---|---|---|---|
+| 13. ตะกร้า vs ยอดจ่ายจริง | items | payments | order_id + `dim_date` |
+| 14. ส่งช้า → คะแนนรีวิว | items | reviews | order_id + `dim_customers` + `dim_date` |
+| 15. ผ่อนชำระ → ความพอใจ | payments | reviews | order_id + `dim_customers` + `dim_date` |
 
 ---
 
-## 7. การตั้งค่าและรันโปรเจกต์
+## 5. กระบวนการ ELT
+
+ใช้แนวทาง **ELT** ผ่าน [dbt](https://www.getdbt.com/) + [DuckDB](https://duckdb.org/)
+
+```
+CSV 9 ไฟล์  ──►  staging (stg_*)  ──►  data warehouse (dim_* / fact_*)  ──►  dashboard
+  Extract         Load + light            Transform (cleaning จริง)          Serve
+```
+
+### 5.1 Extract + Load
+ไฟล์ CSV 9 ไฟล์จาก Kaggle วางที่ `olist_dw/datasets/` — dbt-duckdb ประกาศแต่ละไฟล์เป็น `source`
+(ผ่าน `external_location` ใน [`src_olist.yml`](olist_dw/models/staging/src_olist.yml)) DuckDB อ่าน CSV
+เข้ามาตรงๆ ไม่ต้องเขียนสคริปต์โหลดแยก
+
+### 5.2 Staging layer — `stg_*` (9 โมเดล)
+สำเนา 1:1 ของ source + เพิ่ม `ingestion_timestamp` (เวลาที่โหลด) เท่านั้น — เป็น audit trail และแยก
+"การรับข้อมูลดิบ" ออกจาก "การแปลงเชิงธุรกิจ" ทุกโมเดล downstream อ้าง `{{ ref('stg_...') }}` ไม่มีใคร
+แตะ source โดยตรง
+
+### 5.3 Data Warehouse layer — `dim_*` / `fact_*` (10 โมเดล) — **cleaning จริงอยู่ที่นี่**
+
+| ประเภทการ Transform | ทำที่ไหน | ตัวอย่าง |
+|---|---|---|
+| **Deduplication** | ทุก dim + fact | `ROW_NUMBER() OVER (PARTITION BY <business key>)` เก็บแถวแรก |
+| **Surrogate key** | ทุก dim | `ROW_NUMBER()` สร้าง integer key + เก็บ business key เดิมไว้ |
+| **Unknown member** | ทุก dim | เพิ่มแถว key = -1 ; fact ที่อ้างค่าที่ไม่มี → `COALESCE(key, -1)` แถว fact ไม่หาย |
+| **Type conversion** | fact + dim_date | `CAST(... AS DATE)`, `DATE_DIFF('day', ...)`, `date_part('hour', ...)` |
+| **Null handling** | dim_products, fact_items | `COALESCE(คำแปลอังกฤษ, ชื่อโปรตุเกส, 'unknown')`, `NULLIF(...,0)` กันหารศูนย์, `LEAST/GREATEST` clamp ค่าใน `acos()` |
+| **Standardize** | dim_geography, dim_customers/sellers | `lower(trim(city))` — ต้นทางสะกดเมืองเดียวกันไม่สม่ำเสมอ ; แก้ typo `product_name_lenght → name_length` |
+| **Enrichment / roll-up** | dim_geography | เฉลี่ย `lat/lng` ต่อ zip จาก 1 ล้านแถว ; map รัฐ → 5 ภูมิภาคทางการ |
+| **Generated dimension** | dim_date | สร้างปฏิทิน 2016–2018 จาก `generate_series` (ต้นทางไม่มีตารางวันที่) |
+| **Referential filter** | (ผ่าน dbt test) | `relationships` test 20 จุด — ทุก FK ต้อง resolve เข้า dimension |
+
+### 5.4 การตรวจสอบคุณภาพ (`dbt test`) — **87/87 ผ่าน**
+- `unique` / `not_null` บน surrogate key และ business key ทุก dim
+- `relationships` 20 จุด — พิสูจน์ว่า FK ทุกเส้นใน constellation resolve ได้จริง (conformed dimension ยังคง conformed)
+- `accepted_values` บน region / size_band / review_score
+- Singular tests: grain ของแต่ละ fact unique จริง, ไม่มีแถวหายจาก source, ยอดเงินตรงกับ source ทุกสตางค์, `delivery_days` ไม่ติดลบ
+
+---
+
+## 6. Data Warehouse Database
+
+### วิธี build
+
+```bash
+cd olist_dw
+dbt run --profiles-dir . --project-dir .     # สร้าง dev.duckdb (19 โมเดล)
+dbt test --profiles-dir . --project-dir .    # 87 tests
+```
+
+ผลลัพธ์เก็บใน `olist_dw/dev.duckdb` (gitignored — เป็น build artifact)
+
+### Schema สรุป
+
+| ชั้น | ตาราง |
+|---|---|
+| staging | `stg_customers`, `stg_orders`, `stg_order_items`, `stg_order_payments`, `stg_order_reviews`, `stg_products`, `stg_sellers`, `stg_geolocation`, `stg_category_translation` |
+| dimension | `dim_date`, `dim_geography`, `dim_customers`, `dim_sellers`, `dim_products`, `dim_order_status`, `dim_payment_type` |
+| fact | `fact_order_items`, `fact_order_payments`, `fact_order_reviews` |
+
+### Analytical Queries (15 ข้อ ≥ เกณฑ์ 5)
+
+อยู่ที่ [`olist_dw/analyses/analytical_queries.sql`](olist_dw/analyses/analytical_queries.sql)
+รันด้วย `dbt compile` แล้วเปิดไฟล์ที่ `olist_dw/target/compiled/.../analytical_queries.sql`
+หรือรัน SQL ที่ compile แล้วกับ `dev.duckdb` โดยตรง ทุก query อ่านจาก `dim_*` / `fact_*` เท่านั้น
+
+### ผลลัพธ์สำคัญบางส่วน (Key Findings)
+
+| # | สิ่งที่พบ |
+|---|---|
+| 5 | ลูกค้าซื้อซ้ำมีเพียง **3.1%** (2,913 จาก 95,420 ราย) คิดเป็นรายได้ **5.6%** — retention เป็นจุดอ่อน |
+| 9 | เวลาส่งเฉลี่ย **12.4 วัน** = ร้านเตรียมของ **2.7 วัน** + ขนส่งวิ่ง **9.1 วัน** → คอขวดอยู่ที่ขนส่ง |
+| 14 | ส่งตรงเวลา รีวิวเฉลี่ย **4.29** vs ส่งช้า **2.57** → ต่างกัน **−1.72 ดาว** เป็นปัจจัยที่กระทบความพอใจมากที่สุด |
+| 13 | ยอดจ่ายจริงตรงกับมูลค่าตะกร้าเมื่อจ่ายเต็ม; ช่องว่างขยายเป็น +R$0.19 เมื่อผ่อน 7+ งวด (ดอกเบี้ย) |
+| 2 | รายได้พีคเดือน **พ.ย. 2017** (~R$1.01M, Black Friday) หลังจากนั้นเข้าสู่ระดับ ~R$0.9–1M/เดือน |
+
+---
+
+## 7. Interactive Dashboard
+
+```bash
+streamlit run dashboard_app.py
+```
+
+สร้างด้วย **Streamlit + Altair** อ่านจาก `olist_dw/dev.duckdb` (`dim_*` / `fact_*` เท่านั้น)
+ออกแบบ **สำหรับผู้ชมทั่วไป ไม่ใช่ผู้พัฒนา**:
+
+- ป้ายกำกับทุกจุดเป็นภาษาคน ไม่มีชื่อตาราง/คอลัมน์ดิบ
+- **ทุกกราฟมีคำอธิบาย 1 บรรทัด** ว่าอ่านอย่างไร + ตอบคำถามข้อไหน
+- KPI card มีบริบท (เทียบสัดส่วน / เทียบงวด)
+
+### Sidebar Filters — กระทบทุกแท็บ
+ตัวเลือกทั้งหมดดึงจาก **dimension เท่านั้น**: ช่วงเวลา (ปุ่มด่วนรายปี + custom), ภูมิภาคลูกค้า,
+รัฐลูกค้า, หมวดหมู่สินค้า, วิธีชำระเงิน — เปลี่ยน filter แล้วกราฟทุกแท็บอัปเดตพร้อมกัน
+
+### 5 แท็บ
+
+| แท็บ | ตอบคำถาม | กราฟ |
+|---|---|---|
+| Sales overview | 1, 2, 7 | KPI 4 ตัว, รายได้รายเดือน, Top 10 หมวดหมู่, รายได้ตามภูมิภาค |
+| Customers | 5, 6, 7 | ซื้อครั้งเดียว vs ซื้อซ้ำ (จำนวน + รายได้), AOV ตามภูมิภาค |
+| Delivery | 9, 10, 14 | KPI เวลาส่ง, อัตราส่งช้าตามภูมิภาค, **ส่งช้า → คะแนนรีวิว (drill-across)** |
+| Payments | 3, 4, 13 | วิธีชำระเงิน, งวดผ่อน → ตะกร้า, **ตะกร้า vs ยอดจ่ายจริง (drill-across)** |
+| Quality & reviews | 8, 11, 12 | การกระจายคะแนนรีวิว, ค่าส่ง % ของราคาตามหมวดหมู่, **ระยะทาง → คะแนนรีวิว (drill-across)** |
+
+---
+
+## 8. Team Contribution
+
+| สมาชิก | GitHub | ส่วนที่รับผิดชอบ |
+|---|---|---|
+| นางสาวกุลธิดา สมาขันธ์ | `kunthida-samakhan` | _(ระบุภายหลัง)_ |
+| นายชวนากร เพชรเจริญรัตน์ | `chawanakorn-phet` | _(ระบุภายหลัง)_ |
+| นายวรวัฒน์ พรหมคุณ | `worawatpr-gh` | _(ระบุภายหลัง)_ |
+| นายเยี่ยมภพ ใบโพธิ์ | `yiampopbaipo` | _(ระบุภายหลัง)_ |
+
+การแบ่งงานติดตามได้จาก commit history และ branch ของแต่ละคน (ดู Insights → Contributors)
+
+---
+
+## 9. โครงสร้าง Repository + วิธีรัน
+
+```
+Mini_project/
+├── olist_dw/                       # dbt project
+│   ├── datasets/                   # CSV 9 ไฟล์จาก Kaggle
+│   ├── models/
+│   │   ├── staging/                # stg_* (9) — สำเนา 1:1 + ingestion_timestamp
+│   │   │   └── src_olist.yml       # นิยาม source
+│   │   └── datawarehouse/          # dim_* (7) + fact_* (3) + schema.yml (tests)
+│   ├── analyses/
+│   │   └── analytical_queries.sql  # 15 คำถามธุรกิจ
+│   ├── tests/                      # singular tests (grain, reconciliation)
+│   ├── dbt_project.yml
+│   ├── profiles.yml               # DuckDB local — ไม่มี credential
+│   └── dev.duckdb                 # (gitignored) build artifact
+├── dashboard_app.py               # Streamlit OLAP dashboard (5 แท็บ)
+├── warehouse.py                   # auto-build dev.duckdb เมื่อ deploy
+├── requirements.txt
+└── README.md
+```
+
+### รันทั้งหมดตั้งแต่ต้น
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
-pip freeze > requirements.txt
+.venv\Scripts\activate            # Windows  (source .venv/bin/activate บน mac/linux)
+pip install -r requirements.txt
 
 cd olist_dw
-dbt debug
-dbt run
-dbt test
+dbt run  --profiles-dir . --project-dir .
+dbt test --profiles-dir . --project-dir .
 cd ..
 
-python query_duckdb.py
-streamlit run app.py
 streamlit run dashboard_app.py
 ```
+
 ---
 
-## 8. Deliverables
+## 10. Presentation
 
-- **Infographic**: https://chawanakorn-phet.github.io/Mini_project/deliverables/infographic.html ([source](deliverables/infographic.html)) — สรุปยอดขาย, top categories/states, ผลกระทบของการจัดส่งล่าช้าต่อคะแนนรีวิว, อัตราลูกค้าซื้อซ้ำ (ตัวเลขทั้งหมดคำนวณจริงจาก `dev.duckdb`)
-- **Presentation**: https://canva.link/7srzw8z3nr335cp — สไลด์นำเสนอ
+สไลด์นำเสนอ + สคริปต์ demo: _(ใส่ลิงก์ Canva / ไฟล์ที่นี่)_
+
+โครงการนำเสนอ:
+1. ที่มา OLTP + ER diagram
+2. 15 คำถามธุรกิจ + ตารางเชื่อม dim/measure
+3. Multidimensional model (dimension/level, fact/grain, measure/additivity)
+4. Galaxy schema diagram + เหตุผลที่ต้องเป็น constellation (drill-across)
+5. ELT + cleaning
+6. Warehouse database + analytical queries (สาธิต 2–3 ข้อ)
+7. Dashboard demo (เปลี่ยน filter สด)
+8. Key findings
+9. Q&A

@@ -1,79 +1,158 @@
-{{ config(
-    partition_by = ["order_purchase_date"]
-) }}
+-- FACT 1 of 3 -- what was sold.
+--
+-- Grain: one row per product line on an order (order_id + order_item_id).
+--        Stated once and obeyed everywhere: every measure below is true at the
+--        level of a single product line, never at the level of a whole order.
+--
+-- Connects to SIX dimensions through ELEVEN foreign keys, because two of those
+-- dimensions role-play:
+--     dim_date        x5  purchased / approved / to carrier / delivered / promised
+--     dim_geography   x2  buyer location / seller location
+--     dim_products, dim_customers, dim_sellers, dim_order_status  x1 each
+--
+-- The role-playing geography keys are what make buyer-to-seller distance
+-- computable: both sides resolve through the SAME conformed dimension, so the
+-- coordinates are directly comparable.
+--
+-- Orders that were never delivered have no delivery timestamp. Those rows are
+-- kept and pointed at the date dimension's Unknown member (-1) rather than
+-- dropped, so revenue totals stay complete and "not yet delivered" remains a
+-- visible, countable state instead of a silent gap.
 
-WITH geo_customer AS (
-    SELECT customer_id, avg_lat, avg_lng FROM {{ ref('dim_customers') }}
+with items as (
+
+    select * from {{ ref('stg_order_items') }}
 ),
 
-geo_seller AS (
-    SELECT seller_id, avg_lat, avg_lng FROM {{ ref('dim_sellers') }}
+orders as (
+
+    select * from {{ ref('stg_orders') }}
 ),
 
-source AS (
-    SELECT
-        oi.order_id,
-        oi.order_item_id,
-        oi.product_id,
-        oi.seller_id,
-        o.customer_id,
-        o.order_status,
-        CAST(o.order_purchase_timestamp AS DATE) AS order_purchase_date,
-        o.order_purchase_timestamp,
-        date_part('hour', o.order_purchase_timestamp) AS order_purchase_hour,
-        o.order_approved_at,
-        o.order_delivered_carrier_date,
-        o.order_delivered_customer_date,
-        o.order_estimated_delivery_date,
-        oi.shipping_limit_date,
-        oi.price,
-        oi.freight_value,
-        (oi.price + oi.freight_value) AS total_item_value,
-        DATE_DIFF(
-            'day',
-            CAST(o.order_purchase_timestamp AS DATE),
-            CAST(o.order_delivered_customer_date AS DATE)
-        ) AS delivery_days,
-        DATE_DIFF(
-            'day',
-            CAST(o.order_approved_at AS DATE),
-            CAST(o.order_delivered_carrier_date AS DATE)
-        ) AS seller_processing_days,
-        DATE_DIFF(
-            'day',
-            CAST(o.order_delivered_carrier_date AS DATE),
-            CAST(o.order_delivered_customer_date AS DATE)
-        ) AS carrier_transit_days,
-        CASE
-            WHEN gc.avg_lat IS NULL OR gs.avg_lat IS NULL THEN NULL
-            ELSE 6371 * acos(
-                LEAST(1.0, GREATEST(-1.0,
-                    cos(radians(gc.avg_lat)) * cos(radians(gs.avg_lat))
-                        * cos(radians(gs.avg_lng) - radians(gc.avg_lng))
-                        + sin(radians(gc.avg_lat)) * sin(radians(gs.avg_lat))
+customer as (
+
+    select customer_key, customer_id, geography_key from {{ ref('dim_customers') }}
+),
+
+seller as (
+
+    select seller_key, seller_id, geography_key from {{ ref('dim_sellers') }}
+),
+
+geography as (
+
+    select geography_key, latitude, longitude from {{ ref('dim_geography') }}
+),
+
+joined as (
+
+    select
+        -- Degenerate dimensions: order identifiers with no attributes of their
+        -- own, so they live on the fact rather than in a dimension table.
+        i.order_id,
+        i.order_item_id,
+
+        -- dim_date, role-playing five times
+        coalesce(d_purchase.date_key,  -1)                  as purchase_date_key,
+        coalesce(d_approved.date_key,  -1)                  as approved_date_key,
+        coalesce(d_carrier.date_key,   -1)                  as carrier_date_key,
+        coalesce(d_delivered.date_key, -1)                  as delivered_date_key,
+        coalesce(d_estimated.date_key, -1)                  as estimated_date_key,
+
+        -- the remaining dimensions
+        coalesce(dp.product_key,       -1)                  as product_key,
+        coalesce(dc.customer_key,      -1)                  as customer_key,
+        coalesce(ds.seller_key,        -1)                  as seller_key,
+        coalesce(dos.order_status_key, -1)                  as order_status_key,
+
+        -- dim_geography, role-playing twice
+        coalesce(dc.geography_key,     -1)                  as customer_geography_key,
+        coalesce(ds.geography_key,     -1)                  as seller_geography_key,
+
+        -- Additive measures -- safe to SUM across every dimension
+        i.price,
+        i.freight_value,
+        i.price + i.freight_value                           as total_item_value,
+
+        -- Non-additive measures -- durations and distances. Averaging them is
+        -- meaningful; summing them across rows is not.
+        date_diff('day', cast(o.order_purchase_timestamp as date),
+                         cast(o.order_delivered_customer_date as date))
+                                                            as delivery_days,
+        date_diff('day', cast(o.order_approved_at as date),
+                         cast(o.order_delivered_carrier_date as date))
+                                                            as seller_processing_days,
+        date_diff('day', cast(o.order_delivered_carrier_date as date),
+                         cast(o.order_delivered_customer_date as date))
+                                                            as carrier_transit_days,
+        -- positive = arrived after the date the customer was promised
+        date_diff('day', cast(o.order_estimated_delivery_date as date),
+                         cast(o.order_delivered_customer_date as date))
+                                                            as delivery_delay_days,
+
+        -- Great-circle distance between buyer and seller, in kilometres.
+        -- LEAST/GREATEST clamp the cosine into [-1, 1]; floating point can
+        -- otherwise push it a hair outside the domain and make acos() fail.
+        case
+            when gc.latitude is null or gs.latitude is null then null
+            else 6371 * acos(
+                least(1.0, greatest(-1.0,
+                    cos(radians(gc.latitude)) * cos(radians(gs.latitude))
+                        * cos(radians(gs.longitude) - radians(gc.longitude))
+                    + sin(radians(gc.latitude)) * sin(radians(gs.latitude))
                 ))
             )
-        END AS buyer_seller_distance_km,
-        current_localtimestamp() AS insertion_timestamp
-    FROM {{ ref('stg_order_items') }} AS oi
-    LEFT JOIN {{ ref('stg_orders') }} AS o
-        ON o.order_id = oi.order_id
-    LEFT JOIN geo_customer AS gc
-        ON gc.customer_id = o.customer_id
-    LEFT JOIN geo_seller AS gs
-        ON gs.seller_id = oi.seller_id
+        end                                                 as buyer_seller_distance_km,
+
+        -- Semi-additive flag: counting late deliveries is meaningful, but the
+        -- count only means something within a fixed set of delivered orders.
+        case
+            when o.order_delivered_customer_date is null
+              or o.order_estimated_delivery_date is null then null
+            when o.order_delivered_customer_date > o.order_estimated_delivery_date
+                then 1
+            else 0
+        end                                                 as is_late_delivery,
+
+        cast(date_part('hour', o.order_purchase_timestamp) as integer)
+                                                            as purchase_hour,
+
+        current_localtimestamp()                            as insertion_timestamp
+
+    from items as i
+    left join orders as o on o.order_id = i.order_id
+
+    left join {{ ref('dim_date') }} as d_purchase
+        on d_purchase.full_date  = cast(o.order_purchase_timestamp as date)
+    left join {{ ref('dim_date') }} as d_approved
+        on d_approved.full_date  = cast(o.order_approved_at as date)
+    left join {{ ref('dim_date') }} as d_carrier
+        on d_carrier.full_date   = cast(o.order_delivered_carrier_date as date)
+    left join {{ ref('dim_date') }} as d_delivered
+        on d_delivered.full_date = cast(o.order_delivered_customer_date as date)
+    left join {{ ref('dim_date') }} as d_estimated
+        on d_estimated.full_date = cast(o.order_estimated_delivery_date as date)
+
+    left join {{ ref('dim_products') }}     as dp  on dp.product_id   = i.product_id
+    left join customer                     as dc  on dc.customer_id  = o.customer_id
+    left join seller                       as ds  on ds.seller_id    = i.seller_id
+    left join {{ ref('dim_order_status') }} as dos on dos.order_status = o.order_status
+
+    left join geography as gc on gc.geography_key = dc.geography_key
+    left join geography as gs on gs.geography_key = ds.geography_key
 ),
 
-unique_source AS (
-    SELECT
+deduplicated as (
+
+    select
         *,
-        ROW_NUMBER() OVER (
-            PARTITION BY order_id, order_item_id
-        ) AS row_number
-    FROM source
+        row_number() over (
+            partition by order_id, order_item_id
+            order by order_item_id
+        ) as row_num
+    from joined
 )
 
-SELECT *
-EXCLUDE (row_number)
-FROM unique_source
-WHERE row_number = 1
+select * exclude (row_num)
+from deduplicated
+where row_num = 1

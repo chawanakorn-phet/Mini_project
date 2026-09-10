@@ -1,0 +1,211 @@
+version: 2
+
+# DuckDB does not enforce foreign keys, so the star schema's integrity is
+# asserted here instead: every surrogate key is unique and not null, and every
+# foreign key on every fact must resolve to a row in its dimension. These
+# relationships tests are what prove the constellation actually joins -- if a
+# conformed dimension stopped being conformed, they would fail.
+
+models:
+  - name: dim_date
+    description: >
+      Conformed date dimension (2016-2018), shared by all three facts.
+      Role-plays five times on fact_order_items and three times on
+      fact_order_reviews. Key -1 is the Unknown member for orders with no
+      delivery or approval timestamp.
+    columns:
+      - name: date_key
+        description: "Surrogate key in YYYYMMDD form; -1 is the Unknown member."
+        tests: [unique, not_null]
+      - name: full_date
+        tests: [unique]
+
+  - name: dim_geography
+    description: >
+      Conformed location dimension built by averaging the 1,000,163-row
+      geolocation lookup down to one point per zip prefix. Shared by
+      dim_customers, dim_sellers and all three facts; role-plays twice on
+      fact_order_items as buyer and seller location.
+      Hierarchy: Region -> State -> City -> Zip prefix.
+    columns:
+      - name: geography_key
+        tests: [unique, not_null]
+      - name: zip_code_prefix
+        tests: [unique, not_null]
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul', 'Unknown']
+
+  - name: dim_customers
+    description: >
+      Conformed customer dimension, shared by all three facts. customer_id is
+      the join key but is issued per order; customer_unique_id identifies the
+      actual person and is what repeat-purchase analysis must group by.
+    columns:
+      - name: customer_key
+        tests: [unique, not_null]
+      - name: customer_id
+        tests: [unique, not_null]
+      - name: geography_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_geography'), field: geography_key}
+
+  - name: dim_sellers
+    description: "Seller dimension; points at the same conformed dim_geography as dim_customers."
+    columns:
+      - name: seller_key
+        tests: [unique, not_null]
+      - name: seller_id
+        tests: [unique, not_null]
+      - name: geography_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_geography'), field: geography_key}
+
+  - name: dim_products
+    description: "Product dimension with English category names and a derived package size band."
+    columns:
+      - name: product_key
+        tests: [unique, not_null]
+      - name: product_id
+        tests: [unique, not_null]
+      - name: size_band
+        tests:
+          - accepted_values:
+              values: ['Small', 'Medium', 'Large', 'Unknown']
+
+  - name: dim_order_status
+    description: "Conformed order-status dimension, shared by all three facts."
+    columns:
+      - name: order_status_key
+        tests: [unique, not_null]
+      - name: order_status
+        tests: [unique, not_null]
+
+  - name: dim_payment_type
+    description: "Payment-method dimension for fact_order_payments."
+    columns:
+      - name: payment_type_key
+        tests: [unique, not_null]
+      - name: payment_type
+        tests: [unique, not_null]
+
+  - name: fact_order_items
+    description: >
+      Grain: one product line on an order. Six dimensions via eleven foreign
+      keys, because dim_date role-plays five times and dim_geography twice.
+    columns:
+      - name: purchase_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: approved_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: carrier_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: delivered_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: estimated_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: product_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_products'), field: product_key}
+      - name: customer_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_customers'), field: customer_key}
+      - name: seller_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_sellers'), field: seller_key}
+      - name: order_status_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_order_status'), field: order_status_key}
+      - name: customer_geography_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_geography'), field: geography_key}
+      - name: seller_geography_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_geography'), field: geography_key}
+      - name: price
+        tests: [not_null]
+      - name: freight_value
+        tests: [not_null]
+
+  - name: fact_order_payments
+    description: >
+      Grain: one payment transaction. Shares dim_date, dim_customers,
+      dim_geography and dim_order_status with the other facts.
+    columns:
+      - name: purchase_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: customer_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_customers'), field: customer_key}
+      - name: customer_geography_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_geography'), field: geography_key}
+      - name: payment_type_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_payment_type'), field: payment_type_key}
+      - name: order_status_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_order_status'), field: order_status_key}
+      - name: payment_value
+        tests: [not_null]
+
+  - name: fact_order_reviews
+    description: >
+      Grain: one review per order (review_id + order_id). Neither column is
+      unique on its own -- see the model header for why.
+    columns:
+      - name: purchase_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: review_created_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: review_answered_date_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_date'), field: date_key}
+      - name: customer_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_customers'), field: customer_key}
+      - name: customer_geography_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_geography'), field: geography_key}
+      - name: order_status_key
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_order_status'), field: order_status_key}
+      - name: review_score
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+              quote: false
