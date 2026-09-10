@@ -1,15 +1,13 @@
-"""Olist marketplace — interactive OLAP dashboard.
+"""แดชบอร์ด OLAP ของตลาดกลางออนไลน์ Olist — เวอร์ชันภาษาไทย
 
-Written for a general business audience, not for engineers:
-  * every control and column is labelled in plain language, never with a raw
-    table or column name;
-  * every chart carries a one-line "how to read this" note and says which of
-    the 15 business questions (README section 2) it answers;
-  * the sidebar filters narrow EVERY tab at once, and they only ever read from
-    the dimension tables, exactly as the brief requires.
+ออกแบบสำหรับผู้ชมทั่วไป ไม่ใช่ผู้พัฒนา:
+  * ป้ายกำกับและชื่อคอลัมน์ทุกจุดเป็นภาษาไทย ไม่มีชื่อตาราง/คอลัมน์ดิบ
+  * ชื่อหมวดหมู่สินค้าแปลเป็นไทย (เช่น health_beauty → "สุขภาพและความงาม")
+  * ทุกกราฟมีคำอธิบาย 1 บรรทัดว่าอ่านอย่างไร และตอบคำถามธุรกิจข้อไหน
+  * ตัวกรองในแถบด้านซ้ายมีผลกับทุกแท็บพร้อมกัน และดึงค่าจากตาราง Dimension เท่านั้น
 
-All data comes from the star-schema tables in olist_dw/dev.duckdb
-(dim_* / fact_*). Nothing here touches the staging layer or the raw CSVs.
+ข้อมูลทั้งหมดอ่านจาก star schema ใน olist_dw/dev.duckdb (dim_* / fact_*)
+ไม่มีการแตะ staging layer หรือไฟล์ CSV ดิบ
 """
 
 from __future__ import annotations
@@ -28,15 +26,135 @@ from warehouse import ensure_warehouse_built
 PROJECT_ROOT = Path(__file__).resolve().parent
 DB_PATH = PROJECT_ROOT / "olist_dw" / "dev.duckdb"
 
-st.set_page_config(page_title="Olist Marketplace Dashboard", page_icon="📦", layout="wide")
+st.set_page_config(page_title="แดชบอร์ด Olist Marketplace", page_icon="📦", layout="wide")
+
+# ---------------------------------------------------------------------------
+# การแปลชื่อ (Localization) — ทำที่ชั้นแสดงผล ไม่แตะโมเดล
+# ---------------------------------------------------------------------------
+CATEGORY_TH = {
+    "agro_industry_and_commerce": "เกษตรอุตสาหกรรมและการค้า",
+    "air_conditioning": "เครื่องปรับอากาศ",
+    "art": "งานศิลปะ",
+    "arts_and_craftmanship": "งานศิลปะและงานฝีมือ",
+    "audio": "เครื่องเสียง",
+    "auto": "ยานยนต์และอะไหล่รถ",
+    "baby": "สินค้าแม่และเด็ก",
+    "bed_bath_table": "เครื่องนอน ห้องน้ำ โต๊ะอาหาร",
+    "books_general_interest": "หนังสือทั่วไป",
+    "books_imported": "หนังสือนำเข้า",
+    "books_technical": "หนังสือวิชาการ",
+    "cds_dvds_musicals": "ซีดี/ดีวีดี เพลง",
+    "christmas_supplies": "ของตกแต่งคริสต์มาส",
+    "cine_photo": "กล้องและอุปกรณ์ถ่ายภาพ",
+    "computers": "คอมพิวเตอร์",
+    "computers_accessories": "อุปกรณ์เสริมคอมพิวเตอร์",
+    "consoles_games": "เครื่องเกมและเกม",
+    "construction_tools_construction": "เครื่องมือก่อสร้าง",
+    "construction_tools_lights": "เครื่องมือช่าง–ระบบไฟ",
+    "construction_tools_safety": "เครื่องมือช่าง–อุปกรณ์นิรภัย",
+    "cool_stuff": "ของแปลกน่าสนใจ",
+    "costruction_tools_garden": "เครื่องมือ–ทำสวน",
+    "costruction_tools_tools": "เครื่องมือช่าง",
+    "diapers_and_hygiene": "ผ้าอ้อมและของใช้อนามัย",
+    "drinks": "เครื่องดื่ม",
+    "dvds_blu_ray": "ดีวีดี/บลูเรย์",
+    "electronics": "อุปกรณ์อิเล็กทรอนิกส์",
+    "fashio_female_clothing": "เสื้อผ้าผู้หญิง",
+    "fashion_bags_accessories": "กระเป๋าและเครื่องประดับแฟชั่น",
+    "fashion_childrens_clothes": "เสื้อผ้าเด็ก",
+    "fashion_male_clothing": "เสื้อผ้าผู้ชาย",
+    "fashion_shoes": "รองเท้าแฟชั่น",
+    "fashion_sport": "ชุดกีฬา",
+    "fashion_underwear_beach": "ชุดชั้นในและชุดว่ายน้ำ",
+    "fixed_telephony": "โทรศัพท์บ้าน",
+    "flowers": "ดอกไม้",
+    "food": "อาหาร",
+    "food_drink": "อาหารและเครื่องดื่ม",
+    "furniture_bedroom": "เฟอร์นิเจอร์ห้องนอน",
+    "furniture_decor": "เฟอร์นิเจอร์และของตกแต่ง",
+    "furniture_living_room": "เฟอร์นิเจอร์ห้องนั่งเล่น",
+    "furniture_mattress_and_upholstery": "ที่นอนและเบาะ",
+    "garden_tools": "อุปกรณ์ทำสวน",
+    "health_beauty": "สุขภาพและความงาม",
+    "home_appliances": "เครื่องใช้ไฟฟ้าในบ้าน",
+    "home_appliances_2": "เครื่องใช้ไฟฟ้าในบ้าน (2)",
+    "home_comfort_2": "ของใช้ในบ้าน (2)",
+    "home_confort": "ของใช้ในบ้าน",
+    "home_construction": "วัสดุก่อสร้างบ้าน",
+    "housewares": "เครื่องครัวและของใช้ในบ้าน",
+    "industry_commerce_and_business": "อุตสาหกรรมและธุรกิจ",
+    "kitchen_dining_laundry_garden_furniture": "เฟอร์นิเจอร์ครัว/ซักล้าง/สวน",
+    "la_cuisine": "อุปกรณ์ครัว (La Cuisine)",
+    "luggage_accessories": "กระเป๋าเดินทางและอุปกรณ์",
+    "market_place": "มาร์เก็ตเพลส",
+    "music": "เพลงและเครื่องดนตรี",
+    "musical_instruments": "เครื่องดนตรี",
+    "office_furniture": "เฟอร์นิเจอร์สำนักงาน",
+    "party_supplies": "อุปกรณ์จัดปาร์ตี้",
+    "pc_gamer": "อุปกรณ์เกมเมอร์",
+    "perfumery": "น้ำหอม",
+    "pet_shop": "สัตว์เลี้ยง",
+    "portateis_cozinha_e_preparadores_de_alimentos": "เครื่องครัวขนาดพกพา",
+    "security_and_services": "ความปลอดภัยและบริการ",
+    "signaling_and_security": "ป้ายสัญญาณและความปลอดภัย",
+    "small_appliances": "เครื่องใช้ไฟฟ้าขนาดเล็ก",
+    "small_appliances_home_oven_and_coffee": "เตาอบและเครื่องชงกาแฟ",
+    "sports_leisure": "กีฬาและสันทนาการ",
+    "stationery": "เครื่องเขียน",
+    "tablets_printing_image": "แท็บเล็ตและงานพิมพ์",
+    "telephony": "โทรศัพท์และอุปกรณ์",
+    "toys": "ของเล่น",
+    "unknown": "ไม่ระบุ",
+    "watches_gifts": "นาฬิกาและของขวัญ",
+}
+
+REGION_TH = {
+    "Norte": "ภาคเหนือ",
+    "Nordeste": "ภาคตะวันออกเฉียงเหนือ",
+    "Centro-Oeste": "ภาคกลาง-ตะวันตก",
+    "Sudeste": "ภาคตะวันออกเฉียงใต้",
+    "Sul": "ภาคใต้",
+    "Unknown": "ไม่ระบุ",
+}
+
+PAYMENT_TH = {
+    "Credit card": "บัตรเครดิต",
+    "Boleto (bank slip)": "โบเลโต (ใบชำระเงินธนาคาร)",
+    "Voucher": "บัตรกำนัล/วอเชอร์",
+    "Debit card": "บัตรเดบิต",
+}
+
+
+def _map_col(df: pd.DataFrame, col: str, mapping: dict) -> pd.DataFrame:
+    if not df.empty and col in df.columns:
+        df = df.copy()
+        df[col] = df[col].map(lambda v: mapping.get(v, str(v).replace("_", " ")))
+    return df
+
+
+def th_category(df, col="category"):
+    return _map_col(df, col, CATEGORY_TH)
+
+
+def th_region(df, col="region"):
+    return _map_col(df, col, REGION_TH)
+
+
+def th_payment(df, col="method"):
+    return _map_col(df, col, PAYMENT_TH)
+
+
+def cat_label(value: str) -> str:
+    return CATEGORY_TH.get(value, str(value).replace("_", " "))
+
 
 # On a fresh checkout (e.g. Streamlit Cloud) dev.duckdb does not exist yet;
 # build it once by shelling out to dbt.
-with st.spinner("Preparing the data warehouse (first run only)…"):
+with st.spinner("กำลังเตรียมคลังข้อมูล (เฉพาะการรันครั้งแรก)…"):
     _ok, _log = ensure_warehouse_built()
 if not _ok and not DB_PATH.exists():
-    st.error("Could not build the data warehouse. `dbt run` output:")
-    st.code(_log or "(no output)")
+    st.error("สร้างคลังข้อมูลไม่สำเร็จ — ผลลัพธ์จาก `dbt run`:")
+    st.code(_log or "(ไม่มีข้อความ)")
     st.stop()
 
 
@@ -87,8 +205,7 @@ def _sql_str_list(values) -> str:
 
 # ---------------------------------------------------------------------------
 # Filters — one immutable object threaded into every query so the sidebar
-# controls narrow ALL tabs. A field is None when it is not narrowing anything
-# (the whole range / every value selected).
+# controls narrow ALL tabs. A field is None when it is not narrowing anything.
 # ---------------------------------------------------------------------------
 class Filters(NamedTuple):
     start: Optional[str] = None
@@ -132,12 +249,9 @@ def load_date_bounds() -> Tuple[Optional[date], Optional[date]]:
 
 
 # ---------------------------------------------------------------------------
-# Reusable pre-joined item view. Every "sales" chart starts from this CTE so
-# that the filter logic lives in exactly one place.
+# Reusable pre-joined item view — filter logic lives in exactly one place.
 # ---------------------------------------------------------------------------
 def item_view(f: Filters) -> str:
-    """A SELECT that returns fact_order_items rows already joined to every
-    dimension a chart might slice by, with the active filters applied."""
     conds = ["1 = 1"]
     if f.start:
         conds.append(f"dd.full_date >= DATE '{f.start}'")
@@ -184,8 +298,6 @@ def item_view(f: Filters) -> str:
 
 
 def order_id_filter_cte(f: Filters) -> str:
-    """The set of order_ids that pass the sales-side filters — used to keep the
-    payments and reviews tabs in step with the same sidebar selection."""
     return f"WITH kept_orders AS (SELECT DISTINCT order_id FROM ({item_view(f)}))"
 
 
@@ -193,9 +305,9 @@ def order_id_filter_cte(f: Filters) -> str:
 # Sidebar
 # ---------------------------------------------------------------------------
 def build_sidebar_filters() -> Filters:
-    st.sidebar.header("Filters")
-    st.sidebar.caption("These narrow every chart on every tab. "
-                       "All options come straight from the dimension tables.")
+    st.sidebar.header("ตัวกรอง")
+    st.sidebar.caption("ปรับแล้วมีผลกับทุกกราฟในทุกแท็บ "
+                       "ตัวเลือกทั้งหมดดึงจากตาราง Dimension")
 
     opts = load_filter_options()
     dmin, dmax = load_date_bounds()
@@ -205,52 +317,54 @@ def build_sidebar_filters() -> Filters:
     dmin, dmax = pd.to_datetime(dmin).date(), pd.to_datetime(dmax).date()
 
     years = [str(y) for y in range(dmin.year, dmax.year + 1)]
-    preset = st.sidebar.radio("Time period", ["All time"] + years + ["Custom"],
+    preset = st.sidebar.radio("ช่วงเวลา", ["ทั้งหมด"] + years + ["กำหนดเอง"],
                               horizontal=True)
-    if preset == "All time":
+    if preset == "ทั้งหมด":
         start, end = dmin, dmax
-    elif preset == "Custom":
+    elif preset == "กำหนดเอง":
         lo, hi = date(dmin.year, 1, 1), date(dmax.year, 12, 31)
-        start = st.sidebar.date_input("From", dmin, min_value=lo, max_value=hi)
-        end = st.sidebar.date_input("To", dmax, min_value=lo, max_value=hi)
+        start = st.sidebar.date_input("ตั้งแต่", dmin, min_value=lo, max_value=hi)
+        end = st.sidebar.date_input("ถึง", dmax, min_value=lo, max_value=hi)
     else:
         y = int(preset)
         start = max(dmin, date(y, 1, 1))
         end = min(dmax, date(y, 12, 31))
     if start > end:
-        st.sidebar.warning("‘From’ is after ‘To’ — swapped.")
+        st.sidebar.warning("‘ตั้งแต่’ อยู่หลัง ‘ถึง’ — สลับให้แล้ว")
         start, end = end, start
 
-    def multi(label, key, help_text):
+    def multi(label, key, help_text, mapping=None):
         values = opts.get(key, [])
-        picked = st.sidebar.multiselect(label, values, default=values, help=help_text)
+        fmt = (lambda v: mapping.get(v, str(v))) if mapping else (lambda v: v)
+        picked = st.sidebar.multiselect(label, values, default=values,
+                                        help=help_text, format_func=fmt)
         return None if set(picked) == set(values) else tuple(picked)
 
     return Filters(
         start=start.isoformat(),
         end=end.isoformat(),
-        regions=multi("Customer region", "regions",
-                      "Brazil's five official regions (from dim_geography)."),
-        customer_states=multi("Customer state", "customer_states",
-                              "Two-letter state code (from dim_customers)."),
-        categories=multi("Product category", "categories",
-                         "English category name (from dim_products)."),
-        payment_labels=multi("Payment method", "payment_labels",
-                             "Only affects the Payments tab (from dim_payment_type)."),
+        regions=multi("ภูมิภาคลูกค้า", "regions",
+                      "5 ภูมิภาคทางการของบราซิล (จาก dim_geography)", REGION_TH),
+        customer_states=multi("รัฐลูกค้า", "customer_states",
+                              "รหัสรัฐ 2 ตัวอักษร (จาก dim_customers)"),
+        categories=multi("หมวดหมู่สินค้า", "categories",
+                         "ชื่อหมวดหมู่ (จาก dim_products)", CATEGORY_TH),
+        payment_labels=multi("วิธีชำระเงิน", "payment_labels",
+                             "มีผลเฉพาะแท็บ ‘การชำระเงิน’ (จาก dim_payment_type)", PAYMENT_TH),
     )
 
 
 def active_filter_summary(f: Filters) -> str:
     bits = [f"{f.start} → {f.end}"]
-    for name, val in [("regions", f.regions), ("states", f.customer_states),
-                      ("categories", f.categories), ("payment methods", f.payment_labels)]:
+    for name, val in [("ภูมิภาค", f.regions), ("รัฐ", f.customer_states),
+                      ("หมวดหมู่", f.categories), ("วิธีชำระเงิน", f.payment_labels)]:
         if val is not None:
-            bits.append(f"{len(val)} {name}")
+            bits.append(f"{name} {len(val)} รายการ")
     return " · ".join(bits)
 
 
 # ---------------------------------------------------------------------------
-# Small chart helpers
+# Small helpers
 # ---------------------------------------------------------------------------
 def brl(x) -> str:
     try:
@@ -260,27 +374,26 @@ def brl(x) -> str:
 
 
 def explain(text: str):
-    """One-line 'how to read this chart' note, styled consistently."""
     st.caption("📖 " + text)
 
 
 def empty_note():
-    st.info("No data matches the current filters. Widen the selection in the sidebar.")
+    st.info("ไม่มีข้อมูลตรงกับตัวกรองที่เลือก — ลองขยายการเลือกในแถบด้านซ้าย")
 
 
-# ---------------------------------------------------------------------------
-# TAB 1 — Sales overview
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# แท็บ 1 — ภาพรวมยอดขาย
+# ===========================================================================
 def tab_sales(f: Filters):
     iv = item_view(f)
 
     kpis = run_sql(f"""
         WITH i AS ({iv})
         SELECT
-            COALESCE(SUM(price), 0)                AS revenue,
-            COALESCE(SUM(freight_value), 0)        AS freight,
-            COUNT(DISTINCT order_id)              AS orders,
-            COUNT(*)                              AS items
+            COALESCE(SUM(price), 0)        AS revenue,
+            COALESCE(SUM(freight_value), 0) AS freight,
+            COUNT(DISTINCT order_id)       AS orders,
+            COUNT(*)                       AS items
         FROM i
     """)
     if kpis.empty or kpis.loc[0, "orders"] == 0:
@@ -288,17 +401,16 @@ def tab_sales(f: Filters):
     r = kpis.iloc[0]
     aov = r.revenue / r.orders if r.orders else 0
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Revenue (products)", brl(r.revenue))
-    c2.metric("Freight charged", brl(r.freight))
-    c3.metric("Orders", f"{int(r.orders):,}")
-    c4.metric("Average order value", brl(aov))
+    c1.metric("รายได้จากสินค้า", brl(r.revenue))
+    c2.metric("ค่าจัดส่งที่เก็บได้", brl(r.freight))
+    c3.metric("จำนวนคำสั่งซื้อ", f"{int(r.orders):,}")
+    c4.metric("ยอดขายเฉลี่ยต่อคำสั่งซื้อ", brl(aov))
 
     st.divider()
 
-    # Monthly revenue trend --------------------------------------------------
-    st.subheader("Revenue by month")
-    explain("Each bar is one calendar month of product revenue. Use it to see the "
-            "growth trend and the seasonal peak. — Business question 2")
+    st.subheader("รายได้รายเดือน")
+    explain("แต่ละแท่งคือรายได้จากสินค้าใน 1 เดือน ใช้ดูแนวโน้มการเติบโตและช่วงพีคตามฤดูกาล "
+            "— คำถามข้อ 2")
     monthly = run_sql(f"""
         WITH i AS ({iv})
         SELECT purchase_year_month AS month,
@@ -311,22 +423,20 @@ def tab_sales(f: Filters):
     else:
         st.altair_chart(
             alt.Chart(monthly).mark_bar().encode(
-                x=alt.X("month:O", title="Month", axis=alt.Axis(labelAngle=-45)),
-                y=alt.Y("revenue:Q", title="Revenue (R$)"),
-                tooltip=[alt.Tooltip("month:O", title="Month"),
-                         alt.Tooltip("revenue:Q", title="Revenue (R$)", format=",.0f"),
-                         alt.Tooltip("orders:Q", title="Orders", format=",")],
+                x=alt.X("month:O", title="เดือน", axis=alt.Axis(labelAngle=-45)),
+                y=alt.Y("revenue:Q", title="รายได้ (R$)"),
+                tooltip=[alt.Tooltip("month:O", title="เดือน"),
+                         alt.Tooltip("revenue:Q", title="รายได้ (R$)", format=",.0f"),
+                         alt.Tooltip("orders:Q", title="คำสั่งซื้อ", format=",")],
             ).properties(height=300),
             use_container_width=True,
         )
 
     col1, col2 = st.columns(2)
 
-    # Top categories -------------------------------------------------------
     with col1:
-        st.subheader("Top 10 categories by revenue")
-        explain("The categories that bring in the most product revenue. "
-                "Longer bar = more money. — Business question 1")
+        st.subheader("10 หมวดหมู่ที่ทำรายได้สูงสุด")
+        explain("หมวดหมู่ที่ทำรายได้จากสินค้ามากที่สุด แท่งยาว = เงินเยอะ — คำถามข้อ 1")
         cats = run_sql(f"""
             WITH i AS ({iv})
             SELECT product_category AS category,
@@ -337,22 +447,22 @@ def tab_sales(f: Filters):
         if cats.empty:
             empty_note()
         else:
+            cats = th_category(cats)
             st.altair_chart(
                 alt.Chart(cats).mark_bar().encode(
-                    x=alt.X("revenue:Q", title="Revenue (R$)"),
+                    x=alt.X("revenue:Q", title="รายได้ (R$)"),
                     y=alt.Y("category:N", sort="-x", title=None),
-                    tooltip=[alt.Tooltip("category:N", title="Category"),
-                             alt.Tooltip("revenue:Q", title="Revenue (R$)", format=",.0f"),
-                             alt.Tooltip("items:Q", title="Items sold", format=",")],
+                    tooltip=[alt.Tooltip("category:N", title="หมวดหมู่"),
+                             alt.Tooltip("revenue:Q", title="รายได้ (R$)", format=",.0f"),
+                             alt.Tooltip("items:Q", title="จำนวนชิ้นที่ขาย", format=",")],
                 ).properties(height=320),
                 use_container_width=True,
             )
 
-    # Revenue by region --------------------------------------------------
     with col2:
-        st.subheader("Revenue by region")
-        explain("How product revenue splits across Brazil's five regions. "
-                "The Southeast (São Paulo, Rio) usually dominates. — Business question 4")
+        st.subheader("รายได้ตามภูมิภาค")
+        explain("รายได้จากสินค้าแบ่งตาม 5 ภูมิภาคของบราซิล ภาคตะวันออกเฉียงใต้ "
+                "(เซาเปาโล ริโอ) มักครองสัดส่วนมากที่สุด — คำถามข้อ 4")
         reg = run_sql(f"""
             WITH i AS ({iv})
             SELECT customer_region AS region,
@@ -363,24 +473,23 @@ def tab_sales(f: Filters):
         if reg.empty:
             empty_note()
         else:
+            reg = th_region(reg)
             st.altair_chart(
                 alt.Chart(reg).mark_arc(innerRadius=60).encode(
                     theta=alt.Theta("revenue:Q"),
-                    color=alt.Color("region:N", title="Region"),
-                    tooltip=[alt.Tooltip("region:N", title="Region"),
-                             alt.Tooltip("revenue:Q", title="Revenue (R$)", format=",.0f"),
-                             alt.Tooltip("orders:Q", title="Orders", format=",")],
+                    color=alt.Color("region:N", title="ภูมิภาค"),
+                    tooltip=[alt.Tooltip("region:N", title="ภูมิภาค"),
+                             alt.Tooltip("revenue:Q", title="รายได้ (R$)", format=",.0f"),
+                             alt.Tooltip("orders:Q", title="คำสั่งซื้อ", format=",")],
                 ).properties(height=320),
                 use_container_width=True,
             )
 
     st.divider()
 
-    # Average price per item, by category ------------------------------------
-    st.subheader("Average price per item, by category (top 12)")
-    explain("Not total revenue, but the typical price tag of one item in each "
-            "category — with how many were sold. Tall bar + short 'items sold' = a "
-            "high-ticket, low-volume category. — Business question 3")
+    st.subheader("ราคาเฉลี่ยต่อชิ้น แยกตามหมวดหมู่ (12 อันดับแรก)")
+    explain("ไม่ใช่รายได้รวม แต่คือราคาต่อชิ้นโดยเฉลี่ยของสินค้าในแต่ละหมวดหมู่ พร้อมจำนวนที่ขายได้ "
+            "แท่งสูง + ขายน้อย = หมวดสินค้าราคาแพงแต่ปริมาณน้อย — คำถามข้อ 3")
     avgp = run_sql(f"""
         WITH i AS ({iv})
         SELECT product_category AS category,
@@ -392,28 +501,28 @@ def tab_sales(f: Filters):
     if avgp.empty:
         empty_note()
     else:
+        avgp = th_category(avgp)
         st.altair_chart(
             alt.Chart(avgp).mark_bar().encode(
-                x=alt.X("avg_price:Q", title="Average price per item (R$)"),
+                x=alt.X("avg_price:Q", title="ราคาเฉลี่ยต่อชิ้น (R$)"),
                 y=alt.Y("category:N", sort="-x", title=None),
-                tooltip=[alt.Tooltip("category:N", title="Category"),
-                         alt.Tooltip("avg_price:Q", title="Avg price (R$)", format=",.2f"),
-                         alt.Tooltip("items_sold:Q", title="Items sold", format=",")],
+                tooltip=[alt.Tooltip("category:N", title="หมวดหมู่"),
+                         alt.Tooltip("avg_price:Q", title="ราคาเฉลี่ย (R$)", format=",.2f"),
+                         alt.Tooltip("items_sold:Q", title="จำนวนชิ้นที่ขาย", format=",")],
             ).properties(height=340),
             use_container_width=True,
         )
 
 
-# ---------------------------------------------------------------------------
-# TAB 2 — Customers
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# แท็บ 2 — ลูกค้า
+# ===========================================================================
 def tab_customers(f: Filters):
     iv = item_view(f)
 
-    st.subheader("One-time vs repeat customers")
-    explain("Left: how many distinct people bought once vs more than once. "
-            "Right: how much revenue each group is worth. A big revenue share from "
-            "a small repeat group is the classic 80/20 pattern. — Business question 5")
+    st.subheader("ลูกค้าซื้อครั้งเดียว vs ซื้อซ้ำ")
+    explain("ซ้าย: จำนวนคนที่ซื้อครั้งเดียว เทียบกับซื้อมากกว่า 1 ครั้ง "
+            "ขวา: รายได้ของแต่ละกลุ่ม ถ้ากลุ่มซื้อซ้ำเล็กแต่รายได้เยอะ คือรูปแบบ 80/20 — คำถามข้อ 5")
     grp = run_sql(f"""
         WITH i AS ({iv}),
         per_person AS (
@@ -422,7 +531,7 @@ def tab_customers(f: Filters):
                    SUM(price) AS revenue
             FROM i GROUP BY 1
         )
-        SELECT CASE WHEN orders = 1 THEN 'Bought once' ELSE 'Bought again (2+)' END AS grp,
+        SELECT CASE WHEN orders = 1 THEN 'ซื้อครั้งเดียว' ELSE 'ซื้อซ้ำ (2 ครั้งขึ้นไป)' END AS grp,
                COUNT(*) AS customers,
                ROUND(SUM(revenue), 2) AS revenue
         FROM per_person GROUP BY 1
@@ -434,10 +543,10 @@ def tab_customers(f: Filters):
         st.altair_chart(
             alt.Chart(grp).mark_bar().encode(
                 x=alt.X("grp:N", title=None),
-                y=alt.Y("customers:Q", title="Customers"),
+                y=alt.Y("customers:Q", title="จำนวนลูกค้า"),
                 color=alt.Color("grp:N", legend=None),
-                tooltip=[alt.Tooltip("grp:N", title="Group"),
-                         alt.Tooltip("customers:Q", title="Customers", format=",")],
+                tooltip=[alt.Tooltip("grp:N", title="กลุ่ม"),
+                         alt.Tooltip("customers:Q", title="จำนวนลูกค้า", format=",")],
             ).properties(height=280),
             use_container_width=True,
         )
@@ -445,26 +554,24 @@ def tab_customers(f: Filters):
         st.altair_chart(
             alt.Chart(grp).mark_bar().encode(
                 x=alt.X("grp:N", title=None),
-                y=alt.Y("revenue:Q", title="Revenue (R$)"),
+                y=alt.Y("revenue:Q", title="รายได้ (R$)"),
                 color=alt.Color("grp:N", legend=None),
-                tooltip=[alt.Tooltip("grp:N", title="Group"),
-                         alt.Tooltip("revenue:Q", title="Revenue (R$)", format=",.0f")],
+                tooltip=[alt.Tooltip("grp:N", title="กลุ่ม"),
+                         alt.Tooltip("revenue:Q", title="รายได้ (R$)", format=",.0f")],
             ).properties(height=280),
             use_container_width=True,
         )
-    repeat = grp.loc[grp["grp"].str.startswith("Bought again")]
+    repeat = grp.loc[grp["grp"].str.startswith("ซื้อซ้ำ")]
     if not repeat.empty:
         share = 100 * repeat["revenue"].iloc[0] / grp["revenue"].sum()
         pct_cust = 100 * repeat["customers"].iloc[0] / grp["customers"].sum()
-        st.markdown(f"**Repeat customers are {pct_cust:.1f}% of buyers but "
-                    f"{share:.1f}% of revenue.**")
+        st.markdown(f"**ลูกค้าซื้อซ้ำเป็น {pct_cust:.1f}% ของผู้ซื้อ แต่คิดเป็นรายได้ {share:.1f}%**")
 
     st.divider()
 
-    st.subheader("RFM — where the money sits")
-    explain("Customers split into five equal groups by total spend (quintile 5 = the "
-            "top fifth). For each group: how many customers, how often they buy "
-            "(frequency), and what share of all revenue they bring. — Business question 7")
+    st.subheader("RFM — รายได้กระจุกอยู่ที่กลุ่มไหน")
+    explain("แบ่งลูกค้าเป็น 5 กลุ่มเท่า ๆ กันตามยอดใช้จ่ายรวม (กลุ่ม 5 = จ่ายมากสุด 1 ใน 5) "
+            "แต่ละกลุ่มดูจำนวนลูกค้า ความถี่ในการซื้อ และสัดส่วนรายได้ที่สร้าง — คำถามข้อ 7")
     rfm = run_sql(f"""
         WITH i AS ({iv}),
         per_person AS (
@@ -487,38 +594,38 @@ def tab_customers(f: Filters):
     if rfm.empty:
         empty_note()
     else:
-        rfm["label"] = "Q" + rfm["quintile"].astype(str)
+        rfm["label"] = "กลุ่ม " + rfm["quintile"].astype(str)
         st.altair_chart(
             alt.Chart(rfm).mark_bar().encode(
                 x=alt.X("label:N", sort=list(rfm.sort_values("quintile")["label"]),
-                        title="Spend quintile (Q5 = top fifth)", axis=alt.Axis(labelAngle=0)),
-                y=alt.Y("pct_of_revenue:Q", title="Share of total revenue (%)"),
+                        title="กลุ่มตามยอดใช้จ่าย (กลุ่ม 5 = สูงสุด)", axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("pct_of_revenue:Q", title="สัดส่วนรายได้ทั้งหมด (%)"),
                 color=alt.Color("pct_of_revenue:Q", legend=None, scale=alt.Scale(scheme="blues")),
-                tooltip=[alt.Tooltip("label:N", title="Quintile"),
-                         alt.Tooltip("customers:Q", title="Customers", format=","),
-                         alt.Tooltip("avg_frequency:Q", title="Avg orders / customer"),
-                         alt.Tooltip("pct_of_revenue:Q", title="% of revenue")],
+                tooltip=[alt.Tooltip("label:N", title="กลุ่ม"),
+                         alt.Tooltip("customers:Q", title="จำนวนลูกค้า", format=","),
+                         alt.Tooltip("avg_frequency:Q", title="คำสั่งซื้อเฉลี่ย/คน"),
+                         alt.Tooltip("pct_of_revenue:Q", title="% ของรายได้")],
             ).properties(height=300),
             use_container_width=True,
         )
         top = rfm.loc[rfm["quintile"] == 5]
         if not top.empty:
-            st.markdown(f"**The top-spending 20% of customers bring "
-                        f"{top['pct_of_revenue'].iloc[0]:.1f}% of all revenue.**")
+            st.markdown(f"**ลูกค้ากลุ่มจ่ายเงินสูงสุด 20% สร้างรายได้ "
+                        f"{top['pct_of_revenue'].iloc[0]:.1f}% ของทั้งหมด**")
 
 
-# ---------------------------------------------------------------------------
-# TAB 3 — Delivery
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# แท็บ 3 — การจัดส่ง
+# ===========================================================================
 def tab_delivery(f: Filters):
     iv = item_view(f)
 
     parts = run_sql(f"""
         WITH i AS ({iv})
         SELECT
-            ROUND(AVG(delivery_days), 1)           AS total_days,
-            ROUND(AVG(seller_processing_days), 1)  AS seller_days,
-            ROUND(AVG(carrier_transit_days), 1)    AS carrier_days,
+            ROUND(AVG(delivery_days), 1)            AS total_days,
+            ROUND(AVG(seller_processing_days), 1)   AS seller_days,
+            ROUND(AVG(carrier_transit_days), 1)     AS carrier_days,
             ROUND(100.0 * AVG(is_late_delivery), 1) AS late_rate
         FROM i
         WHERE delivery_days IS NOT NULL
@@ -527,20 +634,18 @@ def tab_delivery(f: Filters):
         empty_note(); return
     p = parts.iloc[0]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Avg delivery time", f"{p.total_days:.1f} days")
-    c2.metric("… seller prepares", f"{p.seller_days:.1f} days")
-    c3.metric("… carrier in transit", f"{p.carrier_days:.1f} days")
-    c4.metric("Late vs promised", f"{p.late_rate:.1f}%")
-    explain("The delivery clock split into the two stages a marketplace can act on: "
-            "how long the seller takes to hand the parcel over, and how long the "
-            "carrier takes to move it. — Business question 10")
+    c1.metric("เวลาจัดส่งเฉลี่ย", f"{p.total_days:.1f} วัน")
+    c2.metric("…ร้านเตรียมของ", f"{p.seller_days:.1f} วัน")
+    c3.metric("…ขนส่งวิ่งระหว่างทาง", f"{p.carrier_days:.1f} วัน")
+    c4.metric("ช้ากว่าที่สัญญาไว้", f"{p.late_rate:.1f}%")
+    explain("แยกเวลาจัดส่งออกเป็น 2 ช่วงที่แพลตฟอร์มควบคุมได้: ร้านใช้เวลาเตรียมของกี่วัน "
+            "และขนส่งใช้เวลาวิ่งกี่วัน — คำถามข้อ 10")
 
     st.divider()
 
-    st.subheader("Seller preparation time by state")
-    explain("Average days the seller takes to hand a parcel to the carrier, by the "
-            "seller's home state (states with at least 50 shipped items). Tall bar = "
-            "slower sellers there. — Business question 9")
+    st.subheader("เวลาที่ผู้ขายใช้เตรียมของ แยกตามรัฐของผู้ขาย")
+    explain("จำนวนวันเฉลี่ยที่ผู้ขายใช้ส่งของให้บริษัทขนส่ง แยกตามรัฐที่ผู้ขายตั้งอยู่ "
+            "(เฉพาะรัฐที่ส่งของอย่างน้อย 50 ชิ้น) แท่งสูง = ผู้ขายที่นั่นเตรียมช้ากว่า — คำถามข้อ 9")
     sp = run_sql(f"""
         {order_id_filter_cte(f)}
         SELECT ds.state AS seller_state,
@@ -559,21 +664,21 @@ def tab_delivery(f: Filters):
     else:
         st.altair_chart(
             alt.Chart(sp).mark_bar().encode(
-                x=alt.X("seller_state:N", sort="-y", title="Seller state",
+                x=alt.X("seller_state:N", sort="-y", title="รัฐของผู้ขาย",
                         axis=alt.Axis(labelAngle=0)),
-                y=alt.Y("avg_processing_days:Q", title="Avg preparation time (days)"),
-                tooltip=[alt.Tooltip("seller_state:N", title="Seller state"),
-                         alt.Tooltip("avg_processing_days:Q", title="Avg prep days"),
-                         alt.Tooltip("items_shipped:Q", title="Items shipped", format=",")],
+                y=alt.Y("avg_processing_days:Q", title="เวลาเตรียมของเฉลี่ย (วัน)"),
+                tooltip=[alt.Tooltip("seller_state:N", title="รัฐของผู้ขาย"),
+                         alt.Tooltip("avg_processing_days:Q", title="วันเตรียมของเฉลี่ย"),
+                         alt.Tooltip("items_shipped:Q", title="จำนวนชิ้นที่ส่ง", format=",")],
             ).properties(height=300),
             use_container_width=True,
         )
 
     st.divider()
 
-    st.subheader("Late-delivery rate by region")
-    explain("Share of parcels that arrived after the promised date, per region. "
-            "Higher bar = more broken promises there. — Business question 10")
+    st.subheader("อัตราการส่งช้ากว่ากำหนด แยกตามภูมิภาค")
+    explain("สัดส่วนพัสดุที่ถึงมือลูกค้าช้ากว่าวันที่สัญญาไว้ แยกตามภูมิภาค "
+            "แท่งสูง = ผิดสัญญาบ่อยกว่า — คำถามข้อ 10")
     late = run_sql(f"""
         WITH i AS ({iv})
         SELECT customer_region AS region,
@@ -587,25 +692,25 @@ def tab_delivery(f: Filters):
     if late.empty:
         empty_note()
     else:
+        late = th_region(late)
         st.altair_chart(
             alt.Chart(late).mark_bar().encode(
                 x=alt.X("region:N", sort="-y", title=None),
-                y=alt.Y("late_rate_pct:Q", title="Late deliveries (%)"),
-                tooltip=[alt.Tooltip("region:N", title="Region"),
-                         alt.Tooltip("late_rate_pct:Q", title="Late (%)"),
-                         alt.Tooltip("avg_days_late:Q", title="Avg days late when late"),
-                         alt.Tooltip("delivered_items:Q", title="Delivered items", format=",")],
+                y=alt.Y("late_rate_pct:Q", title="ส่งช้า (%)"),
+                tooltip=[alt.Tooltip("region:N", title="ภูมิภาค"),
+                         alt.Tooltip("late_rate_pct:Q", title="ส่งช้า (%)"),
+                         alt.Tooltip("avg_days_late:Q", title="เฉลี่ยช้ากี่วัน (เมื่อช้า)"),
+                         alt.Tooltip("delivered_items:Q", title="จำนวนชิ้นที่ส่งถึง", format=",")],
             ).properties(height=300),
             use_container_width=True,
         )
 
     st.divider()
 
-    st.subheader("Does a late delivery hurt the review score?")
-    explain("Orders grouped by how late they were; the line is the average 1–5 review "
-            "score for each group. A steep drop means lateness is what customers "
-            "punish. Drill-across: joins the items fact to the reviews fact through the "
-            "order. — Business question 13")
+    st.subheader("การส่งช้าทำให้คะแนนรีวิวแย่ลงไหม?")
+    explain("จัดกลุ่มคำสั่งซื้อตามระดับความช้า เส้นคือคะแนนรีวิวเฉลี่ย (1–5) ของแต่ละกลุ่ม "
+            "ถ้าเส้นดิ่งลงแรง แปลว่าลูกค้าลงโทษเรื่องความช้าเป็นหลัก "
+            "Drill-across: เชื่อม fact สินค้า เข้ากับ fact รีวิว ผ่านคำสั่งซื้อ — คำถามข้อ 13")
     di = run_sql(f"""
         {order_id_filter_cte(f)},
         delivery AS (
@@ -625,10 +730,10 @@ def tab_delivery(f: Filters):
         )
         SELECT
             CASE
-                WHEN d.was_late = 0 THEN '1. On time / early'
-                WHEN d.delay_days < 3 THEN '2. Late 1–2 days'
-                WHEN d.delay_days < 7 THEN '3. Late 3–6 days'
-                ELSE '4. Late a week+'
+                WHEN d.was_late = 0 THEN '1. ตรงเวลา / เร็วกว่ากำหนด'
+                WHEN d.delay_days < 3 THEN '2. ช้า 1–2 วัน'
+                WHEN d.delay_days < 7 THEN '3. ช้า 3–6 วัน'
+                ELSE '4. ช้าตั้งแต่ 1 สัปดาห์ขึ้นไป'
             END AS outcome,
             COUNT(*) AS orders,
             ROUND(AVG(r.review_score), 2) AS avg_review_score
@@ -640,30 +745,30 @@ def tab_delivery(f: Filters):
     else:
         base = alt.Chart(di).encode(x=alt.X("outcome:N", title=None, axis=alt.Axis(labelAngle=0)))
         bars = base.mark_bar(opacity=0.35).encode(
-            y=alt.Y("orders:Q", title="Orders"),
-            tooltip=[alt.Tooltip("outcome:N", title="Delivery"),
-                     alt.Tooltip("orders:Q", title="Orders", format=","),
-                     alt.Tooltip("avg_review_score:Q", title="Avg score")],
+            y=alt.Y("orders:Q", title="จำนวนคำสั่งซื้อ"),
+            tooltip=[alt.Tooltip("outcome:N", title="การจัดส่ง"),
+                     alt.Tooltip("orders:Q", title="คำสั่งซื้อ", format=","),
+                     alt.Tooltip("avg_review_score:Q", title="คะแนนเฉลี่ย")],
         )
         line = base.mark_line(point=True, color="#d62728").encode(
-            y=alt.Y("avg_review_score:Q", title="Avg review score (1–5)",
+            y=alt.Y("avg_review_score:Q", title="คะแนนรีวิวเฉลี่ย (1–5)",
                     scale=alt.Scale(domain=[1, 5])),
         )
         st.altair_chart(alt.layer(bars, line).resolve_scale(y="independent").properties(height=320),
                         use_container_width=True)
 
 
-# ---------------------------------------------------------------------------
-# TAB 4 — Payments
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# แท็บ 4 — การชำระเงิน
+# ===========================================================================
 def tab_payments(f: Filters):
     pay_filter = ""
     if f.payment_labels is not None:
         pay_filter = f"AND dpt.payment_label IN ({_sql_str_list(f.payment_labels)})"
 
-    st.subheader("How customers pay")
-    explain("Number of orders and the average transaction size for each payment "
-            "method. Credit card usually leads on both. — Business question 8")
+    st.subheader("ลูกค้าจ่ายเงินด้วยวิธีใด")
+    explain("จำนวนคำสั่งซื้อ และมูลค่าเฉลี่ยต่อรายการชำระ ของแต่ละวิธีชำระเงิน "
+            "บัตรเครดิตมักนำทั้งสองด้าน — คำถามข้อ 8")
     mix = run_sql(f"""
         {order_id_filter_cte(f)}
         SELECT dpt.payment_label AS method,
@@ -678,39 +783,39 @@ def tab_payments(f: Filters):
     """)
     if mix.empty:
         empty_note(); return
+    mix = th_payment(mix)
     c1, c2 = st.columns(2)
     with c1:
         st.altair_chart(
             alt.Chart(mix).mark_bar().encode(
-                x=alt.X("orders:Q", title="Orders"),
+                x=alt.X("orders:Q", title="จำนวนคำสั่งซื้อ"),
                 y=alt.Y("method:N", sort="-x", title=None),
-                tooltip=[alt.Tooltip("method:N", title="Method"),
-                         alt.Tooltip("orders:Q", title="Orders", format=",")],
+                tooltip=[alt.Tooltip("method:N", title="วิธีชำระเงิน"),
+                         alt.Tooltip("orders:Q", title="คำสั่งซื้อ", format=",")],
             ).properties(height=260),
             use_container_width=True,
         )
     with c2:
         st.altair_chart(
             alt.Chart(mix).mark_bar(color="#2ca02c").encode(
-                x=alt.X("avg_transaction:Q", title="Average transaction (R$)"),
+                x=alt.X("avg_transaction:Q", title="มูลค่าเฉลี่ยต่อรายการ (R$)"),
                 y=alt.Y("method:N", sort="-x", title=None),
-                tooltip=[alt.Tooltip("method:N", title="Method"),
-                         alt.Tooltip("avg_transaction:Q", title="Avg (R$)", format=",.2f")],
+                tooltip=[alt.Tooltip("method:N", title="วิธีชำระเงิน"),
+                         alt.Tooltip("avg_transaction:Q", title="เฉลี่ย (R$)", format=",.2f")],
             ).properties(height=260),
             use_container_width=True,
         )
 
     st.divider()
 
-    st.subheader("Do instalment plans go with bigger baskets?")
-    explain("Orders grouped by the number of instalments; the bar is the average "
-            "amount paid. If it rises, people reach for instalments on their "
-            "pricier purchases. — Business question 6")
+    st.subheader("การผ่อนชำระสัมพันธ์กับตะกร้าที่ใหญ่ขึ้นไหม?")
+    explain("จัดกลุ่มคำสั่งซื้อตามจำนวนงวดผ่อน แท่งคือยอดจ่ายเฉลี่ย "
+            "ถ้าแท่งสูงขึ้นเรื่อย ๆ แปลว่าคนเลือกผ่อนตอนซื้อของแพง — คำถามข้อ 6")
     inst = run_sql(f"""
         {order_id_filter_cte(f)}
         SELECT
             CASE
-                WHEN fp.payment_installments <= 1 THEN '1 (in full)'
+                WHEN fp.payment_installments <= 1 THEN '1 (จ่ายเต็ม)'
                 WHEN fp.payment_installments <= 3 THEN '2–3'
                 WHEN fp.payment_installments <= 6 THEN '4–6'
                 WHEN fp.payment_installments <= 12 THEN '7–12'
@@ -729,23 +834,22 @@ def tab_payments(f: Filters):
     else:
         st.altair_chart(
             alt.Chart(inst).mark_bar().encode(
-                x=alt.X("instalments:N", sort=alt.SortField("sort_key"), title="Instalments",
+                x=alt.X("instalments:N", sort=alt.SortField("sort_key"), title="จำนวนงวดผ่อน",
                         axis=alt.Axis(labelAngle=0)),
-                y=alt.Y("avg_paid:Q", title="Average amount paid (R$)"),
-                tooltip=[alt.Tooltip("instalments:N", title="Instalments"),
-                         alt.Tooltip("avg_paid:Q", title="Avg paid (R$)", format=",.2f"),
-                         alt.Tooltip("orders:Q", title="Orders", format=",")],
+                y=alt.Y("avg_paid:Q", title="ยอดจ่ายเฉลี่ย (R$)"),
+                tooltip=[alt.Tooltip("instalments:N", title="จำนวนงวด"),
+                         alt.Tooltip("avg_paid:Q", title="ยอดจ่ายเฉลี่ย (R$)", format=",.2f"),
+                         alt.Tooltip("orders:Q", title="คำสั่งซื้อ", format=",")],
             ).properties(height=300),
             use_container_width=True,
         )
 
     st.divider()
 
-    st.subheader("Basket value vs amount actually paid")
-    explain("For each instalment band: the average value of the items ordered vs the "
-            "average total the customer paid. A widening gap is interest on the "
-            "instalment plan. This joins the items fact to the payments fact. "
-            "— Business question 6")
+    st.subheader("มูลค่าสินค้าในตะกร้า เทียบกับยอดที่จ่ายจริง")
+    explain("แต่ละกลุ่มงวดผ่อน: มูลค่าสินค้าที่สั่งเฉลี่ย เทียบกับยอดรวมที่ลูกค้าจ่ายจริงเฉลี่ย "
+            "ช่องว่างที่ถ่างขึ้นคือดอกเบี้ยจากการผ่อน "
+            "Drill-across: เชื่อม fact สินค้า เข้ากับ fact การชำระเงิน — คำถามข้อ 6")
     gap = run_sql(f"""
         {order_id_filter_cte(f)},
         basket AS (
@@ -761,7 +865,7 @@ def tab_payments(f: Filters):
             GROUP BY 1
         )
         SELECT
-            CASE WHEN p.mi <= 1 THEN '1 (in full)' WHEN p.mi <= 6 THEN '2–6' ELSE '7+' END AS instalments,
+            CASE WHEN p.mi <= 1 THEN '1 (จ่ายเต็ม)' WHEN p.mi <= 6 THEN '2–6' ELSE '7+' END AS instalments,
             COUNT(*) AS orders,
             ROUND(AVG(b.basket_value), 2) AS avg_basket_value,
             ROUND(AVG(p.amount_paid), 2)  AS avg_amount_paid
@@ -774,15 +878,15 @@ def tab_payments(f: Filters):
         long = gap.melt(id_vars=["instalments", "orders"],
                         value_vars=["avg_basket_value", "avg_amount_paid"],
                         var_name="measure", value_name="amount")
-        long["measure"] = long["measure"].map({"avg_basket_value": "Items ordered",
-                                               "avg_amount_paid": "Amount paid"})
+        long["measure"] = long["measure"].map({"avg_basket_value": "มูลค่าสินค้าที่สั่ง",
+                                               "avg_amount_paid": "ยอดที่จ่ายจริง"})
         st.altair_chart(
             alt.Chart(long).mark_bar().encode(
-                x=alt.X("instalments:N", title="Instalments", axis=alt.Axis(labelAngle=0)),
+                x=alt.X("instalments:N", title="จำนวนงวดผ่อน", axis=alt.Axis(labelAngle=0)),
                 xOffset="measure:N",
                 y=alt.Y("amount:Q", title="R$"),
                 color=alt.Color("measure:N", title=None),
-                tooltip=[alt.Tooltip("instalments:N", title="Instalments"),
+                tooltip=[alt.Tooltip("instalments:N", title="จำนวนงวด"),
                          alt.Tooltip("measure:N", title=None),
                          alt.Tooltip("amount:Q", title="R$", format=",.2f")],
             ).properties(height=300),
@@ -790,16 +894,15 @@ def tab_payments(f: Filters):
         )
 
 
-# ---------------------------------------------------------------------------
-# TAB 5 — Quality & reviews
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# แท็บ 5 — คุณภาพและรีวิว
+# ===========================================================================
 def tab_quality(f: Filters):
     iv = item_view(f)
 
-    st.subheader("Review score distribution")
-    explain("How the 1–5 star ratings are spread for orders in the current "
-            "selection. A tall 5-star bar with a small 1-star bar is healthy. "
-            "— Business question 12 context")
+    st.subheader("การกระจายของคะแนนรีวิว")
+    explain("คะแนน 1–5 ดาวกระจายอย่างไรสำหรับคำสั่งซื้อในช่วงที่เลือก "
+            "แท่ง 5 ดาวสูงและแท่ง 1 ดาวเตี้ย = สุขภาพดี — บริบทของคำถามข้อ 12")
     dist = run_sql(f"""
         {order_id_filter_cte(f)}
         SELECT review_score AS score, COUNT(*) AS reviews
@@ -811,23 +914,21 @@ def tab_quality(f: Filters):
         empty_note(); return
     st.altair_chart(
         alt.Chart(dist).mark_bar().encode(
-            x=alt.X("score:O", title="Review score (stars)"),
-            y=alt.Y("reviews:Q", title="Number of reviews"),
-            color=alt.Color("score:O", legend=None,
-                            scale=alt.Scale(scheme="redyellowgreen")),
-            tooltip=[alt.Tooltip("score:O", title="Score"),
-                     alt.Tooltip("reviews:Q", title="Reviews", format=",")],
+            x=alt.X("score:O", title="คะแนนรีวิว (ดาว)"),
+            y=alt.Y("reviews:Q", title="จำนวนรีวิว"),
+            color=alt.Color("score:O", legend=None, scale=alt.Scale(scheme="redyellowgreen")),
+            tooltip=[alt.Tooltip("score:O", title="คะแนน"),
+                     alt.Tooltip("reviews:Q", title="จำนวนรีวิว", format=",")],
         ).properties(height=280),
         use_container_width=True,
     )
 
     st.divider()
 
-    st.subheader("Average review score by product category")
-    explain("Each order's main category vs the average 1–5 score its buyers gave "
-            "(categories with at least 50 reviewed orders). Top of the list = "
-            "happiest customers, bottom = the categories to fix. Drill-across: the "
-            "items fact (category) joined to the reviews fact. — Business question 12")
+    st.subheader("คะแนนรีวิวเฉลี่ย แยกตามหมวดหมู่สินค้า")
+    explain("หมวดหมู่หลักของแต่ละคำสั่งซื้อ เทียบกับคะแนนเฉลี่ย 1–5 ที่ลูกค้าให้ "
+            "(เฉพาะหมวดที่มีคำสั่งซื้อรีวิวอย่างน้อย 50) บนสุด = ลูกค้าพอใจสุด ล่างสุด = หมวดที่ต้องแก้ "
+            "Drill-across: เชื่อม fact สินค้า (หมวดหมู่) เข้ากับ fact รีวิว — คำถามข้อ 12")
     catrev = run_sql(f"""
         {order_id_filter_cte(f)},
         order_category AS (
@@ -854,29 +955,31 @@ def tab_quality(f: Filters):
         ORDER BY avg_review_score DESC
     """)
     if not catrev.empty:
+        best_c, best_s = catrev.iloc[0]["category"], catrev.iloc[0]["avg_review_score"]
+        worst_c, worst_s = catrev.iloc[-1]["category"], catrev.iloc[-1]["avg_review_score"]
         show = pd.concat([catrev.head(8), catrev.tail(8)]).drop_duplicates("category")
+        show = th_category(show)
         st.altair_chart(
             alt.Chart(show).mark_bar().encode(
-                x=alt.X("avg_review_score:Q", title="Avg review score (1–5)",
+                x=alt.X("avg_review_score:Q", title="คะแนนรีวิวเฉลี่ย (1–5)",
                         scale=alt.Scale(domain=[0, 5])),
                 y=alt.Y("category:N", sort="-x", title=None),
                 color=alt.Color("avg_review_score:Q", legend=None,
                                 scale=alt.Scale(scheme="redyellowgreen", domain=[3, 4.5])),
-                tooltip=[alt.Tooltip("category:N", title="Category"),
-                         alt.Tooltip("avg_review_score:Q", title="Avg score"),
-                         alt.Tooltip("orders_reviewed:Q", title="Reviewed orders", format=",")],
+                tooltip=[alt.Tooltip("category:N", title="หมวดหมู่"),
+                         alt.Tooltip("avg_review_score:Q", title="คะแนนเฉลี่ย"),
+                         alt.Tooltip("orders_reviewed:Q", title="คำสั่งซื้อที่รีวิว", format=",")],
             ).properties(height=380),
             use_container_width=True,
         )
-        st.caption(f"Best: {catrev.iloc[0]['category']} ({catrev.iloc[0]['avg_review_score']}) · "
-                   f"Worst: {catrev.iloc[-1]['category']} ({catrev.iloc[-1]['avg_review_score']})")
+        st.caption(f"ดีที่สุด: {cat_label(best_c)} ({best_s}) · "
+                   f"แย่ที่สุด: {cat_label(worst_c)} ({worst_s})")
 
     st.divider()
 
-    st.subheader("Freight cost as a share of price, by category")
-    explain("For the biggest categories: how much freight adds on top of the item "
-            "price. A high bar means shipping is expensive relative to what is being "
-            "sold — usually bulky, low-value goods. — Business question 11")
+    st.subheader("ค่าจัดส่งคิดเป็นสัดส่วนของราคาสินค้า แยกตามหมวดหมู่")
+    explain("สำหรับหมวดหมู่ใหญ่ ๆ: ค่าจัดส่งบวกเพิ่มจากราคาสินค้ากี่ % "
+            "แท่งสูง = ค่าส่งแพงเมื่อเทียบกับของที่ขาย มักเป็นของใหญ่แต่ราคาไม่สูง — คำถามข้อ 11")
     fr = run_sql(f"""
         WITH i AS ({iv})
         SELECT product_category AS category,
@@ -888,23 +991,24 @@ def tab_quality(f: Filters):
     if fr.empty:
         empty_note()
     else:
+        fr = th_category(fr)
         st.altair_chart(
             alt.Chart(fr).mark_bar().encode(
-                x=alt.X("freight_pct:Q", title="Freight as % of price"),
+                x=alt.X("freight_pct:Q", title="ค่าจัดส่งคิดเป็น % ของราคา"),
                 y=alt.Y("category:N", sort="-x", title=None),
-                tooltip=[alt.Tooltip("category:N", title="Category"),
-                         alt.Tooltip("freight_pct:Q", title="Freight % of price"),
-                         alt.Tooltip("items:Q", title="Items", format=",")],
+                tooltip=[alt.Tooltip("category:N", title="หมวดหมู่"),
+                         alt.Tooltip("freight_pct:Q", title="ค่าส่ง % ของราคา"),
+                         alt.Tooltip("items:Q", title="จำนวนชิ้น", format=",")],
             ).properties(height=340),
             use_container_width=True,
         )
 
     st.divider()
 
-    st.subheader("Does buyer–seller distance affect the review score?")
-    explain("Orders grouped by how far apart the buyer and seller are; the line is "
-            "the average review score. Distance is computed from the two geography "
-            "roles on the items fact. Drill-across: items fact ⋈ reviews fact. — Business question 13")
+    st.subheader("ระยะทางระหว่างผู้ซื้อกับผู้ขาย ส่งผลต่อคะแนนรีวิวไหม?")
+    explain("จัดกลุ่มคำสั่งซื้อตามระยะทางระหว่างผู้ซื้อกับผู้ขาย เส้นคือคะแนนรีวิวเฉลี่ย "
+            "ระยะทางคำนวณจากพิกัด 2 บทบาท (ลูกค้า/ผู้ขาย) บน fact สินค้า "
+            "Drill-across: fact สินค้า ⋈ fact รีวิว — คำถามข้อ 13")
     dis = run_sql(f"""
         {order_id_filter_cte(f)},
         item_distance AS (
@@ -922,10 +1026,10 @@ def tab_quality(f: Filters):
         )
         SELECT
             CASE
-                WHEN d.distance_km < 100 THEN '1. under 100 km'
-                WHEN d.distance_km < 500 THEN '2. 100–500 km'
-                WHEN d.distance_km < 1500 THEN '3. 500–1500 km'
-                ELSE '4. over 1500 km'
+                WHEN d.distance_km < 100 THEN '1. น้อยกว่า 100 กม.'
+                WHEN d.distance_km < 500 THEN '2. 100–500 กม.'
+                WHEN d.distance_km < 1500 THEN '3. 500–1500 กม.'
+                ELSE '4. มากกว่า 1500 กม.'
             END AS band,
             COUNT(*) AS orders,
             ROUND(AVG(d.distance_km), 0) AS avg_km,
@@ -938,28 +1042,27 @@ def tab_quality(f: Filters):
     else:
         base = alt.Chart(dis).encode(x=alt.X("band:N", title=None, axis=alt.Axis(labelAngle=0)))
         bars = base.mark_bar(opacity=0.35).encode(
-            y=alt.Y("orders:Q", title="Orders"),
-            tooltip=[alt.Tooltip("band:N", title="Distance"),
-                     alt.Tooltip("orders:Q", title="Orders", format=","),
-                     alt.Tooltip("avg_km:Q", title="Avg km"),
-                     alt.Tooltip("avg_review_score:Q", title="Avg score")],
+            y=alt.Y("orders:Q", title="จำนวนคำสั่งซื้อ"),
+            tooltip=[alt.Tooltip("band:N", title="ระยะทาง"),
+                     alt.Tooltip("orders:Q", title="คำสั่งซื้อ", format=","),
+                     alt.Tooltip("avg_km:Q", title="ระยะทางเฉลี่ย (กม.)"),
+                     alt.Tooltip("avg_review_score:Q", title="คะแนนเฉลี่ย")],
         )
         line = base.mark_line(point=True, color="#1f77b4").encode(
-            y=alt.Y("avg_review_score:Q", title="Avg review score (1–5)",
+            y=alt.Y("avg_review_score:Q", title="คะแนนรีวิวเฉลี่ย (1–5)",
                     scale=alt.Scale(domain=[1, 5])),
         )
         st.altair_chart(alt.layer(bars, line).resolve_scale(y="independent").properties(height=300),
                         use_container_width=True)
 
 
-# ---------------------------------------------------------------------------
-# TAB 6 — Sellers & basket
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# แท็บ 6 — ผู้ขายและตะกร้าสินค้า
+# ===========================================================================
 def tab_sellers_basket(f: Filters):
-    st.subheader("Is revenue concentrated in a few sellers? (Pareto 80/20)")
-    explain("Sellers ranked by revenue, then read as: the top X% of sellers earn Y% "
-            "of all revenue. If ‘top 20%’ is near 80%, the marketplace runs on a "
-            "small core of sellers. — Business question 14")
+    st.subheader("รายได้กระจุกตัวอยู่กับผู้ขายไม่กี่รายไหม? (Pareto 80/20)")
+    explain("เรียงผู้ขายตามรายได้ แล้วอ่านว่า: ผู้ขาย X% แรก ทำรายได้ Y% ของทั้งหมด "
+            "ถ้า ‘10% แรก’ ใกล้ 80% แปลว่าแพลตฟอร์มพึ่งพาผู้ขายกลุ่มเล็ก ๆ — คำถามข้อ 14")
     pareto = run_sql(f"""
         {order_id_filter_cte(f)},
         seller_revenue AS (
@@ -982,10 +1085,10 @@ def tab_sellers_basket(f: Filters):
                    100.0 * running_rev / total_rev AS pct_revenue
             FROM ranked
         )
-        SELECT 'Top 1%' AS bucket, ROUND(MAX(pct_revenue), 1) AS pct_of_revenue, 1 AS srt FROM bands WHERE pct_sellers <= 1
-        UNION ALL SELECT 'Top 5%',  ROUND(MAX(pct_revenue), 1), 2 FROM bands WHERE pct_sellers <= 5
-        UNION ALL SELECT 'Top 10%', ROUND(MAX(pct_revenue), 1), 3 FROM bands WHERE pct_sellers <= 10
-        UNION ALL SELECT 'Top 20%', ROUND(MAX(pct_revenue), 1), 4 FROM bands WHERE pct_sellers <= 20
+        SELECT '1% แรก' AS bucket, ROUND(MAX(pct_revenue), 1) AS pct_of_revenue, 1 AS srt FROM bands WHERE pct_sellers <= 1
+        UNION ALL SELECT '5% แรก',  ROUND(MAX(pct_revenue), 1), 2 FROM bands WHERE pct_sellers <= 5
+        UNION ALL SELECT '10% แรก', ROUND(MAX(pct_revenue), 1), 3 FROM bands WHERE pct_sellers <= 10
+        UNION ALL SELECT '20% แรก', ROUND(MAX(pct_revenue), 1), 4 FROM bands WHERE pct_sellers <= 20
         ORDER BY srt
     """)
     if pareto.empty:
@@ -993,27 +1096,25 @@ def tab_sellers_basket(f: Filters):
     else:
         st.altair_chart(
             alt.Chart(pareto).mark_bar().encode(
-                x=alt.X("bucket:N", sort=list(pareto["bucket"]), title="Share of sellers",
+                x=alt.X("bucket:N", sort=list(pareto["bucket"]), title="สัดส่วนผู้ขาย",
                         axis=alt.Axis(labelAngle=0)),
-                y=alt.Y("pct_of_revenue:Q", title="Share of total revenue (%)",
+                y=alt.Y("pct_of_revenue:Q", title="สัดส่วนรายได้ทั้งหมด (%)",
                         scale=alt.Scale(domain=[0, 100])),
                 color=alt.Color("pct_of_revenue:Q", legend=None, scale=alt.Scale(scheme="oranges")),
-                tooltip=[alt.Tooltip("bucket:N", title="Sellers"),
-                         alt.Tooltip("pct_of_revenue:Q", title="% of revenue")],
+                tooltip=[alt.Tooltip("bucket:N", title="กลุ่มผู้ขาย"),
+                         alt.Tooltip("pct_of_revenue:Q", title="% ของรายได้")],
             ).properties(height=300),
             use_container_width=True,
         )
-        top10 = pareto.loc[pareto["bucket"] == "Top 10%"]
+        top10 = pareto.loc[pareto["bucket"] == "10% แรก"]
         if not top10.empty:
-            st.markdown(f"**The top 10% of sellers earn "
-                        f"{top10['pct_of_revenue'].iloc[0]:.0f}% of all revenue.**")
+            st.markdown(f"**ผู้ขาย 10% แรก ทำรายได้ {top10['pct_of_revenue'].iloc[0]:.0f}% ของทั้งหมด**")
 
     st.divider()
 
-    st.subheader("Which product categories are bought together?")
-    explain("Pairs of categories that appear in the same order most often — the "
-            "starting point for cross-sell bundles. Built by self-joining the items "
-            "fact on the order. — Business question 15")
+    st.subheader("หมวดหมู่สินค้าใดถูกซื้อร่วมกันบ่อย?")
+    explain("คู่หมวดหมู่ที่ปรากฏในคำสั่งซื้อเดียวกันบ่อยที่สุด เป็นจุดเริ่มต้นของการจัดชุด cross-sell "
+            "สร้างโดยการ self-join fact สินค้า ที่คำสั่งซื้อ — คำถามข้อ 15")
     basket = run_sql(f"""
         {order_id_filter_cte(f)},
         order_categories AS (
@@ -1023,22 +1124,24 @@ def tab_sellers_basket(f: Filters):
             WHERE dp.category <> 'unknown'
               AND f.order_id IN (SELECT order_id FROM kept_orders)
         )
-        SELECT a.category || '  +  ' || b.category AS pair,
+        SELECT a.category AS cat_a, b.category AS cat_b,
                COUNT(*) AS orders_together
         FROM order_categories a
         JOIN order_categories b ON a.order_id = b.order_id AND a.category < b.category
-        GROUP BY 1 ORDER BY orders_together DESC LIMIT 12
+        GROUP BY 1, 2 ORDER BY orders_together DESC LIMIT 12
     """)
     if basket.empty:
-        st.info("No category appears alongside another in the current selection "
-                "(most Olist orders contain a single item).")
+        st.info("ไม่มีหมวดหมู่ใดปรากฏคู่กับหมวดอื่นในช่วงที่เลือก "
+                "(คำสั่งซื้อส่วนใหญ่ของ Olist มีสินค้าชิ้นเดียว)")
     else:
+        basket["pair"] = (basket["cat_a"].map(cat_label) + "  +  "
+                          + basket["cat_b"].map(cat_label))
         st.altair_chart(
             alt.Chart(basket).mark_bar().encode(
-                x=alt.X("orders_together:Q", title="Orders containing both"),
+                x=alt.X("orders_together:Q", title="จำนวนคำสั่งซื้อที่มีทั้งคู่"),
                 y=alt.Y("pair:N", sort="-x", title=None),
-                tooltip=[alt.Tooltip("pair:N", title="Category pair"),
-                         alt.Tooltip("orders_together:Q", title="Orders", format=",")],
+                tooltip=[alt.Tooltip("pair:N", title="คู่หมวดหมู่"),
+                         alt.Tooltip("orders_together:Q", title="คำสั่งซื้อ", format=",")],
             ).properties(height=340),
             use_container_width=True,
         )
@@ -1048,22 +1151,21 @@ def tab_sellers_basket(f: Filters):
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    st.title("📦 Olist Marketplace Dashboard")
-    st.caption("Real transactions from the Brazilian e-commerce marketplace Olist "
-               "(Sept 2016 – Oct 2018). Every number below is read from the "
-               "dimensional model in olist_dw/dev.duckdb.")
+    st.title("📦 แดชบอร์ดตลาดกลางออนไลน์ Olist")
+    st.caption("ข้อมูลธุรกรรมจริงจากตลาดกลางอีคอมเมิร์ซ Olist ประเทศบราซิล "
+               "(ก.ย. 2016 – ต.ค. 2018) ทุกตัวเลขอ่านจากโมเดลหลายมิติใน olist_dw/dev.duckdb")
 
     con = get_connection()
     if not warehouse_ready(con):
-        st.error("The warehouse tables are not available. Run `dbt run` inside olist_dw/.")
+        st.error("ไม่พบตารางคลังข้อมูล — รัน `dbt run` ในโฟลเดอร์ olist_dw/ ก่อน")
         st.stop()
 
     filters = build_sidebar_filters()
-    st.info("Showing: " + active_filter_summary(filters))
+    st.info("กำลังแสดง: " + active_filter_summary(filters))
 
     t1, t2, t3, t4, t5, t6 = st.tabs([
-        "Sales overview", "Customers", "Delivery", "Payments", "Quality & reviews",
-        "Sellers & basket",
+        "📊 ภาพรวมยอดขาย", "👥 ลูกค้า", "🚚 การจัดส่ง",
+        "💳 การชำระเงิน", "⭐ คุณภาพและรีวิว", "🏪 ผู้ขายและตะกร้า",
     ])
     with t1:
         tab_sales(filters)
