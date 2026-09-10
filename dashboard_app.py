@@ -47,7 +47,12 @@ if not _ok and not DB_PATH.exists():
 def get_connection() -> Optional[duckdb.DuckDBPyConnection]:
     if not DB_PATH.exists():
         return None
-    return duckdb.connect(str(DB_PATH), read_only=True)
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    # The staging models are views over the CSVs, which DuckDB resolves against
+    # the process working directory. Point it at olist_dw/ so those views work
+    # no matter where the app is launched from (locally or on Streamlit Cloud).
+    con.execute(f"SET file_search_path = '{(PROJECT_ROOT / 'olist_dw').as_posix()}'")
+    return con
 
 
 REQUIRED_TABLES = {
@@ -347,7 +352,7 @@ def tab_sales(f: Filters):
     with col2:
         st.subheader("Revenue by region")
         explain("How product revenue splits across Brazil's five regions. "
-                "The Southeast (São Paulo, Rio) usually dominates. — Business question 7")
+                "The Southeast (São Paulo, Rio) usually dominates. — Business question 4")
         reg = run_sql(f"""
             WITH i AS ({iv})
             SELECT customer_region AS region,
@@ -369,6 +374,35 @@ def tab_sales(f: Filters):
                 use_container_width=True,
             )
 
+    st.divider()
+
+    # Average price per item, by category ------------------------------------
+    st.subheader("Average price per item, by category (top 12)")
+    explain("Not total revenue, but the typical price tag of one item in each "
+            "category — with how many were sold. Tall bar + short 'items sold' = a "
+            "high-ticket, low-volume category. — Business question 3")
+    avgp = run_sql(f"""
+        WITH i AS ({iv})
+        SELECT product_category AS category,
+               COUNT(*) AS items_sold,
+               ROUND(AVG(price), 2) AS avg_price
+        FROM i GROUP BY 1 HAVING COUNT(*) >= 30
+        ORDER BY avg_price DESC LIMIT 12
+    """)
+    if avgp.empty:
+        empty_note()
+    else:
+        st.altair_chart(
+            alt.Chart(avgp).mark_bar().encode(
+                x=alt.X("avg_price:Q", title="Average price per item (R$)"),
+                y=alt.Y("category:N", sort="-x", title=None),
+                tooltip=[alt.Tooltip("category:N", title="Category"),
+                         alt.Tooltip("avg_price:Q", title="Avg price (R$)", format=",.2f"),
+                         alt.Tooltip("items_sold:Q", title="Items sold", format=",")],
+            ).properties(height=340),
+            use_container_width=True,
+        )
+
 
 # ---------------------------------------------------------------------------
 # TAB 2 — Customers
@@ -379,7 +413,7 @@ def tab_customers(f: Filters):
     st.subheader("One-time vs repeat customers")
     explain("Left: how many distinct people bought once vs more than once. "
             "Right: how much revenue each group is worth. A big revenue share from "
-            "a small repeat group is the classic 80/20 pattern. — Business questions 5 & 6")
+            "a small repeat group is the classic 80/20 pattern. — Business question 5")
     grp = run_sql(f"""
         WITH i AS ({iv}),
         per_person AS (
@@ -427,29 +461,50 @@ def tab_customers(f: Filters):
 
     st.divider()
 
-    st.subheader("Average order value by region")
-    explain("How much a typical order is worth in each region. Tall bar = customers "
-            "there spend more per order. — Business question 7")
-    aov = run_sql(f"""
-        WITH i AS ({iv})
-        SELECT customer_region AS region,
-               COUNT(DISTINCT order_id) AS orders,
-               ROUND(SUM(price) / COUNT(DISTINCT order_id), 2) AS avg_order_value
-        FROM i WHERE customer_region <> 'Unknown' GROUP BY 1 ORDER BY avg_order_value DESC
+    st.subheader("RFM — where the money sits")
+    explain("Customers split into five equal groups by total spend (quintile 5 = the "
+            "top fifth). For each group: how many customers, how often they buy "
+            "(frequency), and what share of all revenue they bring. — Business question 7")
+    rfm = run_sql(f"""
+        WITH i AS ({iv}),
+        per_person AS (
+            SELECT customer_unique_id,
+                   COUNT(DISTINCT order_id) AS frequency,
+                   SUM(price) AS monetary
+            FROM i GROUP BY 1
+        ),
+        scored AS (
+            SELECT frequency, monetary,
+                   NTILE(5) OVER (ORDER BY monetary) AS quintile
+            FROM per_person
+        )
+        SELECT quintile,
+               COUNT(*) AS customers,
+               ROUND(AVG(frequency), 2) AS avg_frequency,
+               ROUND(100.0 * SUM(monetary) / SUM(SUM(monetary)) OVER (), 1) AS pct_of_revenue
+        FROM scored GROUP BY 1 ORDER BY quintile DESC
     """)
-    if aov.empty:
+    if rfm.empty:
         empty_note()
     else:
+        rfm["label"] = "Q" + rfm["quintile"].astype(str)
         st.altair_chart(
-            alt.Chart(aov).mark_bar().encode(
-                x=alt.X("region:N", sort="-y", title=None),
-                y=alt.Y("avg_order_value:Q", title="Average order value (R$)"),
-                tooltip=[alt.Tooltip("region:N", title="Region"),
-                         alt.Tooltip("avg_order_value:Q", title="Avg order value (R$)", format=",.2f"),
-                         alt.Tooltip("orders:Q", title="Orders", format=",")],
+            alt.Chart(rfm).mark_bar().encode(
+                x=alt.X("label:N", sort=list(rfm.sort_values("quintile")["label"]),
+                        title="Spend quintile (Q5 = top fifth)", axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("pct_of_revenue:Q", title="Share of total revenue (%)"),
+                color=alt.Color("pct_of_revenue:Q", legend=None, scale=alt.Scale(scheme="blues")),
+                tooltip=[alt.Tooltip("label:N", title="Quintile"),
+                         alt.Tooltip("customers:Q", title="Customers", format=","),
+                         alt.Tooltip("avg_frequency:Q", title="Avg orders / customer"),
+                         alt.Tooltip("pct_of_revenue:Q", title="% of revenue")],
             ).properties(height=300),
             use_container_width=True,
         )
+        top = rfm.loc[rfm["quintile"] == 5]
+        if not top.empty:
+            st.markdown(f"**The top-spending 20% of customers bring "
+                        f"{top['pct_of_revenue'].iloc[0]:.1f}% of all revenue.**")
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +533,41 @@ def tab_delivery(f: Filters):
     c4.metric("Late vs promised", f"{p.late_rate:.1f}%")
     explain("The delivery clock split into the two stages a marketplace can act on: "
             "how long the seller takes to hand the parcel over, and how long the "
-            "carrier takes to move it. — Business question 9")
+            "carrier takes to move it. — Business question 10")
+
+    st.divider()
+
+    st.subheader("Seller preparation time by state")
+    explain("Average days the seller takes to hand a parcel to the carrier, by the "
+            "seller's home state (states with at least 50 shipped items). Tall bar = "
+            "slower sellers there. — Business question 9")
+    sp = run_sql(f"""
+        {order_id_filter_cte(f)}
+        SELECT ds.state AS seller_state,
+               COUNT(*) AS items_shipped,
+               ROUND(AVG(f.seller_processing_days), 1) AS avg_processing_days
+        FROM fact_order_items f
+        JOIN dim_sellers ds ON ds.seller_key = f.seller_key
+        WHERE f.seller_processing_days IS NOT NULL
+          AND ds.seller_id <> 'unknown'
+          AND f.order_id IN (SELECT order_id FROM kept_orders)
+        GROUP BY 1 HAVING COUNT(*) >= 50
+        ORDER BY avg_processing_days DESC
+    """)
+    if sp.empty:
+        empty_note()
+    else:
+        st.altair_chart(
+            alt.Chart(sp).mark_bar().encode(
+                x=alt.X("seller_state:N", sort="-y", title="Seller state",
+                        axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("avg_processing_days:Q", title="Avg preparation time (days)"),
+                tooltip=[alt.Tooltip("seller_state:N", title="Seller state"),
+                         alt.Tooltip("avg_processing_days:Q", title="Avg prep days"),
+                         alt.Tooltip("items_shipped:Q", title="Items shipped", format=",")],
+            ).properties(height=300),
+            use_container_width=True,
+        )
 
     st.divider()
 
@@ -515,7 +604,8 @@ def tab_delivery(f: Filters):
     st.subheader("Does a late delivery hurt the review score?")
     explain("Orders grouped by how late they were; the line is the average 1–5 review "
             "score for each group. A steep drop means lateness is what customers "
-            "punish. This joins the delivery fact to the review fact. — Business question 14")
+            "punish. Drill-across: joins the items fact to the reviews fact through the "
+            "order. — Business question 13")
     di = run_sql(f"""
         {order_id_filter_cte(f)},
         delivery AS (
@@ -573,7 +663,7 @@ def tab_payments(f: Filters):
 
     st.subheader("How customers pay")
     explain("Number of orders and the average transaction size for each payment "
-            "method. Credit card usually leads on both. — Business question 3")
+            "method. Credit card usually leads on both. — Business question 8")
     mix = run_sql(f"""
         {order_id_filter_cte(f)}
         SELECT dpt.payment_label AS method,
@@ -615,7 +705,7 @@ def tab_payments(f: Filters):
     st.subheader("Do instalment plans go with bigger baskets?")
     explain("Orders grouped by the number of instalments; the bar is the average "
             "amount paid. If it rises, people reach for instalments on their "
-            "pricier purchases. — Business question 4")
+            "pricier purchases. — Business question 6")
     inst = run_sql(f"""
         {order_id_filter_cte(f)}
         SELECT
@@ -655,7 +745,7 @@ def tab_payments(f: Filters):
     explain("For each instalment band: the average value of the items ordered vs the "
             "average total the customer paid. A widening gap is interest on the "
             "instalment plan. This joins the items fact to the payments fact. "
-            "— Business question 13")
+            "— Business question 6")
     gap = run_sql(f"""
         {order_id_filter_cte(f)},
         basket AS (
@@ -733,6 +823,56 @@ def tab_quality(f: Filters):
 
     st.divider()
 
+    st.subheader("Average review score by product category")
+    explain("Each order's main category vs the average 1–5 score its buyers gave "
+            "(categories with at least 50 reviewed orders). Top of the list = "
+            "happiest customers, bottom = the categories to fix. Drill-across: the "
+            "items fact (category) joined to the reviews fact. — Business question 12")
+    catrev = run_sql(f"""
+        {order_id_filter_cte(f)},
+        order_category AS (
+            SELECT order_id, category FROM (
+                SELECT f.order_id, dp.category,
+                       ROW_NUMBER() OVER (PARTITION BY f.order_id ORDER BY COUNT(*) DESC) AS rn
+                FROM fact_order_items f
+                JOIN dim_products dp ON dp.product_key = f.product_key
+                WHERE f.order_id IN (SELECT order_id FROM kept_orders)
+                GROUP BY 1, 2
+            ) WHERE rn = 1
+        ),
+        order_score AS (
+            SELECT order_id, AVG(review_score) AS review_score
+            FROM fact_order_reviews
+            WHERE order_id IN (SELECT order_id FROM kept_orders)
+            GROUP BY 1
+        )
+        SELECT oc.category,
+               COUNT(*) AS orders_reviewed,
+               ROUND(AVG(os.review_score), 2) AS avg_review_score
+        FROM order_category oc JOIN order_score os ON os.order_id = oc.order_id
+        GROUP BY 1 HAVING COUNT(*) >= 50
+        ORDER BY avg_review_score DESC
+    """)
+    if not catrev.empty:
+        show = pd.concat([catrev.head(8), catrev.tail(8)]).drop_duplicates("category")
+        st.altair_chart(
+            alt.Chart(show).mark_bar().encode(
+                x=alt.X("avg_review_score:Q", title="Avg review score (1–5)",
+                        scale=alt.Scale(domain=[0, 5])),
+                y=alt.Y("category:N", sort="-x", title=None),
+                color=alt.Color("avg_review_score:Q", legend=None,
+                                scale=alt.Scale(scheme="redyellowgreen", domain=[3, 4.5])),
+                tooltip=[alt.Tooltip("category:N", title="Category"),
+                         alt.Tooltip("avg_review_score:Q", title="Avg score"),
+                         alt.Tooltip("orders_reviewed:Q", title="Reviewed orders", format=",")],
+            ).properties(height=380),
+            use_container_width=True,
+        )
+        st.caption(f"Best: {catrev.iloc[0]['category']} ({catrev.iloc[0]['avg_review_score']}) · "
+                   f"Worst: {catrev.iloc[-1]['category']} ({catrev.iloc[-1]['avg_review_score']})")
+
+    st.divider()
+
     st.subheader("Freight cost as a share of price, by category")
     explain("For the biggest categories: how much freight adds on top of the item "
             "price. A high bar means shipping is expensive relative to what is being "
@@ -764,7 +904,7 @@ def tab_quality(f: Filters):
     st.subheader("Does buyer–seller distance affect the review score?")
     explain("Orders grouped by how far apart the buyer and seller are; the line is "
             "the average review score. Distance is computed from the two geography "
-            "roles on the items fact. — Business question 8")
+            "roles on the items fact. Drill-across: items fact ⋈ reviews fact. — Business question 13")
     dis = run_sql(f"""
         {order_id_filter_cte(f)},
         item_distance AS (
@@ -813,6 +953,98 @@ def tab_quality(f: Filters):
 
 
 # ---------------------------------------------------------------------------
+# TAB 6 — Sellers & basket
+# ---------------------------------------------------------------------------
+def tab_sellers_basket(f: Filters):
+    st.subheader("Is revenue concentrated in a few sellers? (Pareto 80/20)")
+    explain("Sellers ranked by revenue, then read as: the top X% of sellers earn Y% "
+            "of all revenue. If ‘top 20%’ is near 80%, the marketplace runs on a "
+            "small core of sellers. — Business question 14")
+    pareto = run_sql(f"""
+        {order_id_filter_cte(f)},
+        seller_revenue AS (
+            SELECT seller_key, SUM(price) AS revenue
+            FROM fact_order_items
+            WHERE order_id IN (SELECT order_id FROM kept_orders)
+            GROUP BY 1
+        ),
+        ranked AS (
+            SELECT revenue,
+                   ROW_NUMBER() OVER (ORDER BY revenue DESC) AS rnk,
+                   COUNT(*) OVER () AS total_sellers,
+                   SUM(revenue) OVER (ORDER BY revenue DESC
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_rev,
+                   SUM(revenue) OVER () AS total_rev
+            FROM seller_revenue
+        ),
+        bands AS (
+            SELECT 100.0 * rnk / total_sellers AS pct_sellers,
+                   100.0 * running_rev / total_rev AS pct_revenue
+            FROM ranked
+        )
+        SELECT 'Top 1%' AS bucket, ROUND(MAX(pct_revenue), 1) AS pct_of_revenue, 1 AS srt FROM bands WHERE pct_sellers <= 1
+        UNION ALL SELECT 'Top 5%',  ROUND(MAX(pct_revenue), 1), 2 FROM bands WHERE pct_sellers <= 5
+        UNION ALL SELECT 'Top 10%', ROUND(MAX(pct_revenue), 1), 3 FROM bands WHERE pct_sellers <= 10
+        UNION ALL SELECT 'Top 20%', ROUND(MAX(pct_revenue), 1), 4 FROM bands WHERE pct_sellers <= 20
+        ORDER BY srt
+    """)
+    if pareto.empty:
+        empty_note()
+    else:
+        st.altair_chart(
+            alt.Chart(pareto).mark_bar().encode(
+                x=alt.X("bucket:N", sort=list(pareto["bucket"]), title="Share of sellers",
+                        axis=alt.Axis(labelAngle=0)),
+                y=alt.Y("pct_of_revenue:Q", title="Share of total revenue (%)",
+                        scale=alt.Scale(domain=[0, 100])),
+                color=alt.Color("pct_of_revenue:Q", legend=None, scale=alt.Scale(scheme="oranges")),
+                tooltip=[alt.Tooltip("bucket:N", title="Sellers"),
+                         alt.Tooltip("pct_of_revenue:Q", title="% of revenue")],
+            ).properties(height=300),
+            use_container_width=True,
+        )
+        top10 = pareto.loc[pareto["bucket"] == "Top 10%"]
+        if not top10.empty:
+            st.markdown(f"**The top 10% of sellers earn "
+                        f"{top10['pct_of_revenue'].iloc[0]:.0f}% of all revenue.**")
+
+    st.divider()
+
+    st.subheader("Which product categories are bought together?")
+    explain("Pairs of categories that appear in the same order most often — the "
+            "starting point for cross-sell bundles. Built by self-joining the items "
+            "fact on the order. — Business question 15")
+    basket = run_sql(f"""
+        {order_id_filter_cte(f)},
+        order_categories AS (
+            SELECT DISTINCT f.order_id, dp.category
+            FROM fact_order_items f
+            JOIN dim_products dp ON dp.product_key = f.product_key
+            WHERE dp.category <> 'unknown'
+              AND f.order_id IN (SELECT order_id FROM kept_orders)
+        )
+        SELECT a.category || '  +  ' || b.category AS pair,
+               COUNT(*) AS orders_together
+        FROM order_categories a
+        JOIN order_categories b ON a.order_id = b.order_id AND a.category < b.category
+        GROUP BY 1 ORDER BY orders_together DESC LIMIT 12
+    """)
+    if basket.empty:
+        st.info("No category appears alongside another in the current selection "
+                "(most Olist orders contain a single item).")
+    else:
+        st.altair_chart(
+            alt.Chart(basket).mark_bar().encode(
+                x=alt.X("orders_together:Q", title="Orders containing both"),
+                y=alt.Y("pair:N", sort="-x", title=None),
+                tooltip=[alt.Tooltip("pair:N", title="Category pair"),
+                         alt.Tooltip("orders_together:Q", title="Orders", format=",")],
+            ).properties(height=340),
+            use_container_width=True,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main():
@@ -829,8 +1061,9 @@ def main():
     filters = build_sidebar_filters()
     st.info("Showing: " + active_filter_summary(filters))
 
-    t1, t2, t3, t4, t5 = st.tabs([
+    t1, t2, t3, t4, t5, t6 = st.tabs([
         "Sales overview", "Customers", "Delivery", "Payments", "Quality & reviews",
+        "Sellers & basket",
     ])
     with t1:
         tab_sales(filters)
@@ -842,6 +1075,8 @@ def main():
         tab_payments(filters)
     with t5:
         tab_quality(filters)
+    with t6:
+        tab_sellers_basket(filters)
 
 
 if __name__ == "__main__":

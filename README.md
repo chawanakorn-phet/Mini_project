@@ -153,58 +153,56 @@ erDiagram
 
 ## 2. คำถามทางธุรกิจ 15 ข้อ
 
-ออกแบบ **ย้อนจากโมเดล** — ทุกข้อระบุชัดว่าตอบด้วย Fact ใด เดินผ่าน Dimension ใด และวัดด้วย Measure ใด
+ทุกข้อระบุชัดว่าตอบด้วย Fact ใด เดินผ่าน Dimension ใด และวัดด้วย Measure ใด
 Query จริงของทุกข้ออยู่ที่ [`olist_dw/analyses/analytical_queries.sql`](olist_dw/analyses/analytical_queries.sql)
 
-### กลุ่ม A — ยอดขายและรายได้
-1. หมวดหมู่สินค้าใดทำรายได้และขายได้จำนวนชิ้นมากที่สุด — อันดับตรงกันหรือไม่?
-2. รายได้รายเดือนเติบโตอย่างไร (MoM Growth) และช่วงชั่วโมงใดมีคำสั่งซื้อสูงสุด?
-3. วิธีการชำระเงินแบบใดถูกใช้มากที่สุด และแบบใดมีมูลค่าเฉลี่ยต่อรายการสูงสุด?
-4. การผ่อนชำระ (instalments) สัมพันธ์กับขนาดตะกร้าสินค้าหรือไม่?
+### กลุ่ม A — ยอดขายและสินค้า
+1. หมวดหมู่สินค้าใดมียอดขายรวมและจำนวนสินค้าที่ขายสูงที่สุด?
+2. ยอดขายและจำนวนคำสั่งซื้อมีแนวโน้มเปลี่ยนแปลงอย่างไรในแต่ละเดือนและปี? (MoM Growth)
+3. หมวดหมู่สินค้าใดมีราคาเฉลี่ยต่อชิ้นสูงที่สุด และมีจำนวนการขายมากน้อยเพียงใด?
 
 ### กลุ่ม B — ลูกค้า
-5. สัดส่วนลูกค้าที่กลับมาซื้อซ้ำมีเท่าไร และคิดเป็นรายได้กี่ %?
-6. รายได้กระจุกตัวอยู่กับลูกค้ากลุ่ม Top 10% ตามกฎ Pareto (80/20) หรือไม่?
+4. ลูกค้าในรัฐและเมืองใดสร้างยอดขายรวมสูงที่สุด?
+5. ลูกค้าที่กลับมาซื้อซ้ำคิดเป็นกี่เปอร์เซ็นต์ของลูกค้าทั้งหมด?
+6. **[Drill-Across]** ยอดที่ลูกค้าจ่ายจริง (payments) ตรงกับมูลค่าสินค้าในตะกร้า (items) หรือไม่ และช่องว่างขยายตามจำนวนงวดผ่อนไหม (ดอกเบี้ย)? *(items + payments)*
+7. RFM Analysis — ลูกค้ากลุ่มใดมีมูลค่า (Monetary) และความถี่ (Frequency) ในการซื้อสูงที่สุด?
 
-### กลุ่ม C — ภูมิศาสตร์
-7. ภูมิภาคและรัฐใดสร้างรายได้มากที่สุด และค่าเฉลี่ยต่อคำสั่งซื้อต่างกันอย่างไร?
-8. ระยะทางระหว่างผู้ซื้อกับผู้ขายส่งผลต่อคะแนนรีวิวหรือไม่?
+### กลุ่ม C — การชำระเงิน
+8. วิธีการชำระเงินใดถูกใช้งานมากที่สุด และมีมูลค่าการชำระเงินเฉลี่ยเท่าใด?
 
-### กลุ่ม D — การจัดส่ง
-9. เวลาจัดส่งเฉลี่ยกี่วัน และแบ่งเป็น "ร้านเตรียมของ" กับ "ขนส่งวิ่ง" อย่างละเท่าไร?
-10. อัตราการส่งช้ากว่ากำหนดในแต่ละภูมิภาคเป็นเท่าไร และช้าเฉลี่ยกี่วัน?
+### กลุ่ม D — การจัดส่งและผู้ขาย
+9. ผู้ขายในรัฐใดมีระยะเวลาเตรียมสินค้าเฉลี่ยสูงที่สุด?
+10. ระยะเวลาขนส่งและความล่าช้าในการจัดส่งแตกต่างกันอย่างไรในแต่ละเดือน?
+14. ผู้ขายกลุ่ม Top 10% สร้างยอดขายคิดเป็นกี่เปอร์เซ็นต์ของยอดขายทั้งหมด? (Pareto 80/20)
 
-### กลุ่ม E — สินค้าและปฏิบัติการ
-11. หมวดหมู่ใดมีค่าจัดส่งคิดเป็นสัดส่วนของราคาสินค้าสูงที่สุด?
-12. คำสั่งซื้อหลุดออกจากวงจรตรงไหน — สัดส่วนสถานะออเดอร์และรายได้ที่ค้างในสถานะยังไม่ส่งมอบ?
+### กลุ่ม E — คุณภาพและรีวิว
+11. หมวดหมู่สินค้าใดมีสัดส่วนค่าจัดส่งต่อราคาสินค้าสูงที่สุด?
+12. **[Drill-Across]** หมวดหมู่สินค้าใดมีคะแนนรีวิวเฉลี่ยสูงที่สุดและต่ำที่สุด? *(items + reviews)*
+13. **[Drill-Across]** คะแนนรีวิวได้รับผลกระทบจากอะไรมากกว่ากัน — การส่งช้า หรือระยะทางระหว่างผู้ซื้อกับผู้ขาย? *(items + reviews)*
+15. Market Basket Analysis — สินค้าคู่ (หมวดหมู่) ใดถูกซื้อร่วมกันบ่อยที่สุด?
 
-### กลุ่ม F — Drill-Across (ต้องใช้ 2 Fact ตอบ)
-13. ยอดที่ลูกค้าจ่ายจริงตรงกับมูลค่าสินค้าในตะกร้าหรือไม่ และช่องว่างขยายตามจำนวนงวดผ่อนไหม? *(items + payments)*
-14. การส่งช้าทำให้คะแนนรีวิวลดลงเท่าไร และยิ่งช้ามากยิ่งแย่ลงหรือไม่? *(items + reviews)*
-15. ลูกค้าที่ผ่อนชำระพอใจมากหรือน้อยกว่าลูกค้าที่จ่ายเต็ม? *(payments + reviews)*
+> **Drill-Across (ข้อ 6, 12, 13)** = คำถามที่ตอบด้วย Fact เดียวไม่ได้ ต้อง aggregate 2 Fact แยกกัน
+> แล้ว join ผ่าน **conformed dimension** — เป็นเหตุผลตรงตัวว่าทำไมต้องเป็น Galaxy Schema (ดูข้อ 4)
 
 ### ตารางเชื่อมโยง คำถาม → Fact / Dimension / Measure
 
 | # | Fact | Dimension ที่เดินผ่าน | Measure ที่วัด |
 |---|---|---|---|
 | 1 | `fact_order_items` | `dim_products` (category) | `SUM(price)`, `COUNT(*)` |
-| 2 | `fact_order_items` | `dim_date` (year_month, purchase_hour) | `SUM(price)`, `COUNT(DISTINCT order_id)` |
-| 3 | `fact_order_payments` | `dim_payment_type` | `COUNT(DISTINCT order_id)`, `AVG(payment_value)` |
-| 4 | `fact_order_payments` | (payment_installments banded) | `AVG(payment_value)` |
-| 5 | `fact_order_items` | `dim_customers` (customer_unique_id) | `COUNT(DISTINCT order_id)`, `SUM(price)` |
-| 6 | `fact_order_items` | `dim_customers` | `SUM(price)` + cumulative window |
-| 7 | `fact_order_items` | `dim_geography` (region → state) | `SUM(price)`, `AVG` per order |
-| 8 | `fact_order_items` + `fact_order_reviews` | `dim_geography` ×2 (buyer, seller) | `AVG(buyer_seller_distance_km)`, `AVG(review_score)` |
-| 9 | `fact_order_items` | `dim_date` (purchased/carrier/delivered) | `AVG(delivery_days / seller_processing_days / carrier_transit_days)` |
-| 10 | `fact_order_items` | `dim_date` (delivered vs estimated), `dim_geography` | `AVG(is_late_delivery)`, `AVG(delivery_delay_days)` |
+| 2 | `fact_order_items` | `dim_date` (year → month) | `SUM(price)`, `COUNT(DISTINCT order_id)`, MoM % |
+| 3 | `fact_order_items` | `dim_products` (category) | `AVG(price)`, `COUNT(*)` |
+| 4 | `fact_order_items` | `dim_geography` (region → state → city) | `SUM(price)`, `COUNT(DISTINCT order_id)` |
+| 5 | `fact_order_items` | `dim_customers` (`customer_unique_id`) | `COUNT(DISTINCT order_id)` |
+| 6 | `fact_order_items` **+** `fact_order_payments` | conformed: order + `dim_date` | `SUM(total_item_value)` vs `SUM(payment_value)`, `payment_installments` |
+| 7 | `fact_order_items` | `dim_customers` + `dim_date` | Recency `MAX(date)`, Frequency `COUNT`, Monetary `SUM(price)` + `NTILE(5)` |
+| 8 | `fact_order_payments` | `dim_payment_type` | `COUNT(DISTINCT order_id)`, `AVG(payment_value)` |
+| 9 | `fact_order_items` | `dim_sellers` (state) | `AVG(seller_processing_days)` |
+| 10 | `fact_order_items` | `dim_date` (delivered / estimated roles) | `AVG(delivery_days)`, `AVG(delivery_delay_days)`, `AVG(is_late_delivery)` |
 | 11 | `fact_order_items` | `dim_products` (category, size_band) | `SUM(freight_value) / SUM(price)` |
-| 12 | `fact_order_items` | `dim_order_status` (lifecycle_step) | `COUNT(DISTINCT order_id)`, `SUM(price)` |
-| 13 | `fact_order_items` **+** `fact_order_payments` | conformed: order, `dim_date` | `SUM(total_item_value)` vs `SUM(payment_value)` |
-| 14 | `fact_order_items` **+** `fact_order_reviews` | conformed: order, `dim_customers`, `dim_date` | `AVG(delivery_delay_days)`, `AVG(review_score)` |
-| 15 | `fact_order_payments` **+** `fact_order_reviews` | conformed: order, `dim_customers`, `dim_date` | `AVG(payment_installments)`, `AVG(review_score)` |
-
----
-
+| 12 | `fact_order_items` **+** `fact_order_reviews` | conformed: order + `dim_products` | `AVG(review_score)` |
+| 13 | `fact_order_items` **+** `fact_order_reviews` | conformed: order + `dim_customers` + `dim_date` | `AVG(is_late_delivery)`, `AVG(buyer_seller_distance_km)`, `AVG(review_score)` |
+| 14 | `fact_order_items` | `dim_sellers` | `SUM(price)` + cumulative window (Pareto) |
+| 15 | `fact_order_items` | `dim_products` (self-join order_id) | `COUNT(*)` co-occurrence |
 ## 3. Multidimensional Data Model
 
 ### 3.1 Dimensions (7 ตาราง)
@@ -225,15 +223,15 @@ Query จริงของทุกข้ออยู่ที่ [`olist_dw/an
 
 > **`dim_geography` คือการเปลี่ยนแปลงหลักจากโมเดลเดิม** — เดิมที่อยู่ลูกค้ากับผู้ขายเป็นคอลัมน์กระจัดกระจาย
 > อยู่คนละตาราง ทำให้ "รัฐที่ซื้อ" กับ "รัฐที่ขาย" นับกันคนละแบบ ตอนนี้ยุบตาราง geolocation 1 ล้านแถว
-> ให้เหลือ 1 พิกัดต่อ zip แล้วให้ทั้งสองฝั่งชี้มาที่ dimension เดียวกัน → คำนวณระยะทางผู้ซื้อ–ผู้ขายได้ (ข้อ 8)
+> ให้เหลือ 1 พิกัดต่อ zip แล้วให้ทั้งสองฝั่งชี้มาที่ dimension เดียวกัน → คำนวณระยะทางผู้ซื้อ–ผู้ขายได้ (ข้อ 13)
 
 ### 3.2 Fact Tables (3 ตาราง)
 
 | Fact | Grain (1 แถว = อะไร) | เชื่อม Dimension | ตอบคำถาม |
 |---|---|---|---|
-| `fact_order_items` | 1 รายการสินค้าในคำสั่งซื้อ (`order_id` + `order_item_id`) | **6 dims / 11 FK** (dim_date ×5, dim_geography ×2, products, customers, sellers, order_status) | 1,2,5–12,13,14 |
-| `fact_order_payments` | 1 รายการชำระเงิน (`order_id` + `payment_sequential`) | 4 dims (dim_date, customers, geography, order_status) + payment_type | 3,4,13,15 |
-| `fact_order_reviews` | 1 รีวิวต่อคำสั่งซื้อ (`review_id` + `order_id`) | 3 dims (dim_date ×3, customers, geography, order_status) | 8,14,15 |
+| `fact_order_items` | 1 รายการสินค้าในคำสั่งซื้อ (`order_id` + `order_item_id`) | **6 dims / 11 FK** (dim_date ×5, dim_geography ×2, products, customers, sellers, order_status) | 1–7, 9–15 |
+| `fact_order_payments` | 1 รายการชำระเงิน (`order_id` + `payment_sequential`) | 4 dims (dim_date, customers, geography, order_status) + payment_type | 6, 8 |
+| `fact_order_reviews` | 1 รีวิวต่อคำสั่งซื้อ (`review_id` + `order_id`) | 3 dims (dim_date ×3, customers, geography, order_status) | 12, 13 |
 
 > **กับดัก grain ที่เจอจริง:** `review_id` เพียงอย่างเดียว **ไม่ใช่ grain** — Olist ใช้ `review_id` เดียว
 > ครอบหลาย order เมื่อ 1 แบบสอบถามครอบหลายการซื้อ (789 review_id ครอบ 1,412 order) การ dedup ด้วย
@@ -308,15 +306,15 @@ graph TB
 มี **3 business process ที่ grain ต่างกัน** — 1 บรรทัดสินค้า ≠ 1 การชำระเงิน ≠ 1 รีวิว
 ถ้ายัดทั้งหมดลง fact เดียว measure จะซ้ำและ SUM ผิด (เช่น รีวิว 1 อันจะถูกนับซ้ำตามจำนวนสินค้าในออเดอร์)
 
-และมีคำถามที่ **fact เดียวตอบไม่ได้** (ข้อ 13–15) ต้อง aggregate 2 fact แยกกันไปที่ grain ร่วม
+และมีคำถามที่ **fact เดียวตอบไม่ได้** (ข้อ 6, 12, 13) ต้อง aggregate 2 fact แยกกันไปที่ grain ร่วม
 แล้ว join ผ่าน **conformed dimension** — นี่คือ **drill-across** ซึ่งเป็นเหตุผลตรงตัวว่าทำไม galaxy schema
 ต้องมีอยู่ ตัวอย่าง:
 
 | คำถาม | Fact A | Fact B | เชื่อมผ่าน conformed dim |
 |---|---|---|---|
-| 13. ตะกร้า vs ยอดจ่ายจริง | items | payments | order_id + `dim_date` |
-| 14. ส่งช้า → คะแนนรีวิว | items | reviews | order_id + `dim_customers` + `dim_date` |
-| 15. ผ่อนชำระ → ความพอใจ | payments | reviews | order_id + `dim_customers` + `dim_date` |
+| 6. ยอดจ่ายจริง vs มูลค่าตะกร้า (+ งวดผ่อน) | items | payments | order_id + `dim_date` |
+| 12. คะแนนรีวิวเฉลี่ยรายหมวดหมู่ | items | reviews | order_id + `dim_products` |
+| 13. ส่งช้า vs ระยะทาง → คะแนนรีวิว | items | reviews | order_id + `dim_customers` + `dim_date` |
 
 ---
 
@@ -371,9 +369,12 @@ dbt run --profiles-dir . --project-dir .     # สร้าง dev.duckdb (19 �
 dbt test --profiles-dir . --project-dir .    # 87 tests
 ```
 
-ผลลัพธ์เก็บใน `olist_dw/dev.duckdb` (gitignored — เป็น build artifact)
+ผลลัพธ์เก็บใน `olist_dw/dev.duckdb` — **commit ไว้ใน repo** (ขนาดเพียง ~24 MB เพราะ staging เป็น view)
+เพื่อให้ Streamlit Cloud (ที่รัน dbt ไม่ได้) เปิด dashboard ได้ทันทีโดยไม่ต้อง build
 
 ### Schema สรุป
+
+> staging materialize เป็น **view** (ไม่กินพื้นที่ใน `dev.duckdb`) ส่วน dim/fact เป็น **table**
 
 | ชั้น | ตาราง |
 |---|---|
@@ -389,18 +390,23 @@ dbt test --profiles-dir . --project-dir .    # 87 tests
 
 ### ผลลัพธ์สำคัญบางส่วน (Key Findings)
 
-| # | สิ่งที่พบ |
+| ข้อ | สิ่งที่พบ |
 |---|---|
 | 5 | ลูกค้าซื้อซ้ำมีเพียง **3.1%** (2,913 จาก 95,420 ราย) คิดเป็นรายได้ **5.6%** — retention เป็นจุดอ่อน |
-| 9 | เวลาส่งเฉลี่ย **12.4 วัน** = ร้านเตรียมของ **2.7 วัน** + ขนส่งวิ่ง **9.1 วัน** → คอขวดอยู่ที่ขนส่ง |
-| 14 | ส่งตรงเวลา รีวิวเฉลี่ย **4.29** vs ส่งช้า **2.57** → ต่างกัน **−1.72 ดาว** เป็นปัจจัยที่กระทบความพอใจมากที่สุด |
-| 13 | ยอดจ่ายจริงตรงกับมูลค่าตะกร้าเมื่อจ่ายเต็ม; ช่องว่างขยายเป็น +R$0.19 เมื่อผ่อน 7+ งวด (ดอกเบี้ย) |
-| 2 | รายได้พีคเดือน **พ.ย. 2017** (~R$1.01M, Black Friday) หลังจากนั้นเข้าสู่ระดับ ~R$0.9–1M/เดือน |
+| 7 (RFM) | ลูกค้ากลุ่มจ่ายเงินสูงสุด 20% สร้างรายได้ **~57%** ของทั้งหมด |
+| 10 | เวลาส่งเฉลี่ย **12.4 วัน** = ร้านเตรียมของ **2.7 วัน** + ขนส่งวิ่ง **9.1 วัน** → คอขวดอยู่ที่ขนส่ง |
+| 13 | ส่งตรงเวลา รีวิวเฉลี่ย **4.29** vs ส่งช้า **2.57** → ต่างกัน **−1.72 ดาว** (ระยะทางกระทบแค่ ~−0.2 ดาว) |
+| 6 | ยอดจ่ายจริงตรงกับมูลค่าตะกร้าเมื่อจ่ายเต็ม ช่องว่างขยายเมื่อผ่อนหลายงวด (ดอกเบี้ย) |
+| 14 | ผู้ขาย Top 10% สร้างยอดขาย **~68%** ของทั้งหมด — ตรงตามกฎ Pareto |
+| 2 | รายได้พีคเดือน **พ.ย. 2017** (~R$1.01M, Black Friday) หลังจากนั้น ~R$0.9–1M/เดือน |
 
 ---
 
 ## 7. Interactive Dashboard
 
+🔗 **Live demo:** https://miniproject-vvcre79hljddpvyj82zuub.streamlit.app/
+
+รันในเครื่อง:
 ```bash
 streamlit run dashboard_app.py
 ```
@@ -416,15 +422,16 @@ streamlit run dashboard_app.py
 ตัวเลือกทั้งหมดดึงจาก **dimension เท่านั้น**: ช่วงเวลา (ปุ่มด่วนรายปี + custom), ภูมิภาคลูกค้า,
 รัฐลูกค้า, หมวดหมู่สินค้า, วิธีชำระเงิน — เปลี่ยน filter แล้วกราฟทุกแท็บอัปเดตพร้อมกัน
 
-### 5 แท็บ
+### 6 แท็บ
 
 | แท็บ | ตอบคำถาม | กราฟ |
 |---|---|---|
-| Sales overview | 1, 2, 7 | KPI 4 ตัว, รายได้รายเดือน, Top 10 หมวดหมู่, รายได้ตามภูมิภาค |
-| Customers | 5, 6, 7 | ซื้อครั้งเดียว vs ซื้อซ้ำ (จำนวน + รายได้), AOV ตามภูมิภาค |
-| Delivery | 9, 10, 14 | KPI เวลาส่ง, อัตราส่งช้าตามภูมิภาค, **ส่งช้า → คะแนนรีวิว (drill-across)** |
-| Payments | 3, 4, 13 | วิธีชำระเงิน, งวดผ่อน → ตะกร้า, **ตะกร้า vs ยอดจ่ายจริง (drill-across)** |
-| Quality & reviews | 8, 11, 12 | การกระจายคะแนนรีวิว, ค่าส่ง % ของราคาตามหมวดหมู่, **ระยะทาง → คะแนนรีวิว (drill-across)** |
+| Sales overview | 1, 2, 3, 4 | KPI 4 ตัว · รายได้รายเดือน · Top 10 หมวดหมู่ (รายได้) · รายได้ตามภูมิภาค · ราคาเฉลี่ยต่อชิ้นรายหมวดหมู่ |
+| Customers | 5, 7 | ซื้อครั้งเดียว vs ซื้อซ้ำ · **RFM — สัดส่วนรายได้ตาม quintile** |
+| Delivery | 9, 10, 13 | KPI เวลาส่ง · เวลาเตรียมของรายรัฐผู้ขาย · อัตราส่งช้ารายภูมิภาค · **ส่งช้า → คะแนนรีวิว (drill-across)** |
+| Payments | 6, 8 | วิธีชำระเงิน · งวดผ่อน → ตะกร้า · **มูลค่าตะกร้า vs ยอดจ่ายจริง (drill-across)** |
+| Quality & reviews | 11, 12, 13 | การกระจายคะแนนรีวิว · **คะแนนรีวิวเฉลี่ยรายหมวดหมู่ (drill-across)** · ค่าส่ง % ของราคา · **ระยะทาง → คะแนนรีวิว (drill-across)** |
+| Sellers & basket | 14, 15 | **Pareto ผู้ขาย Top 1/5/10/20%** · **Market Basket — คู่หมวดหมู่ที่ซื้อร่วมกัน** |
 
 ---
 
@@ -456,7 +463,7 @@ Mini_project/
 │   ├── tests/                      # singular tests (grain, reconciliation)
 │   ├── dbt_project.yml
 │   ├── profiles.yml               # DuckDB local — ไม่มี credential
-│   └── dev.duckdb                 # (gitignored) build artifact
+│   └── dev.duckdb                 # warehouse ที่ build แล้ว (~24 MB, commit ไว้)
 ├── dashboard_app.py               # Streamlit OLAP dashboard (5 แท็บ)
 ├── warehouse.py                   # auto-build dev.duckdb เมื่อ deploy
 ├── requirements.txt

@@ -17,6 +17,6 @@ clean-targets:
 models:
   olist_dw:
     staging:
-      +materialized: table
+      +materialized: view
     datawarehouse:
       +materialized: table

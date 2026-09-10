@@ -21,7 +21,11 @@ if not ok:
 
 @st.cache_resource
 def get_connection():
-    return duckdb.connect(str(DB_PATH), read_only=True)
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    # Staging models are views over the CSVs; make their relative paths resolve
+    # from olist_dw/ regardless of the launch directory.
+    con.execute(f"SET file_search_path = '{(DB_PATH.parent).as_posix()}'")
+    return con
 
 # Helper to execute queries safely
 def run_query(query):

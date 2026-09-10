@@ -7,6 +7,10 @@ dbt_packages/
 logs/
 *.duckdb
 *.duckdb.wal
+# ...but DO commit the built warehouse: it is only ~24 MB now that the staging
+# models are views, and shipping it means Streamlit Cloud (which cannot run dbt)
+# serves the dashboard straight away instead of building on first load.
+!olist_dw/dev.duckdb
 .DS_Store
 node_modules/
 .user.yml
