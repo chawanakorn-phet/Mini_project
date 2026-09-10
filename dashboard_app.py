@@ -75,8 +75,14 @@ class Filters(NamedTuple):
     statuses: Optional[Tuple[str, ...]] = None
 
 
-def _sql_list(values):
-    return "(" + ", ".join("'" + str(v).replace("'", "''") + "'" for v in values) + ")"
+def _in_cond(col, values):
+    """SQL 'col IN (...)'; when the selection is empty (user deselected
+    everything) fall back to a never-true condition so the result is empty
+    instead of a syntax error from IN ()."""
+    if not values:
+        return "1 = 0"
+    quoted = ", ".join("'" + str(v).replace("'", "''") + "'" for v in values)
+    return f"{col} IN ({quoted})"
 
 
 def item_cte(filters: Filters) -> str:
@@ -89,13 +95,13 @@ def item_cte(filters: Filters) -> str:
     if filters.end:
         conds.append(f"f.order_purchase_date <= DATE '{filters.end}'")
     if filters.statuses is not None:
-        conds.append(f"f.order_status IN {_sql_list(filters.statuses)}")
+        conds.append(_in_cond("f.order_status", filters.statuses))
     if filters.categories is not None:
-        conds.append(f"dp.category IN {_sql_list(filters.categories)}")
+        conds.append(_in_cond("dp.category", filters.categories))
     if filters.customer_states is not None:
-        conds.append(f"dc.state IN {_sql_list(filters.customer_states)}")
+        conds.append(_in_cond("dc.state", filters.customer_states))
     if filters.seller_states is not None:
-        conds.append(f"ds.state IN {_sql_list(filters.seller_states)}")
+        conds.append(_in_cond("ds.state", filters.seller_states))
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
     return f"""
         SELECT f.*
