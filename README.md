@@ -493,17 +493,3 @@ streamlit run dashboard_app.py
 
 ---
 
-## 10. Presentation
-
-สไลด์นำเสนอ + สคริปต์ demo: _(ใส่ลิงก์ Canva / ไฟล์ที่นี่)_
-
-โครงการนำเสนอ:
-1. ที่มา OLTP + ER diagram
-2. 15 คำถามธุรกิจ + ตารางเชื่อม dim/measure
-3. Multidimensional model (dimension/level, fact/grain, measure/additivity)
-4. Galaxy schema diagram + เหตุผลที่ต้องเป็น constellation (drill-across)
-5. ELT + cleaning
-6. Warehouse database + analytical queries (สาธิต 2–3 ข้อ)
-7. Dashboard demo (เปลี่ยน filter สด)
-8. Key findings
-9. Q&A
