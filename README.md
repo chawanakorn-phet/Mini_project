@@ -225,33 +225,24 @@ Query จริงของทุกข้ออยู่ที่ [`olist_dw/an
 
 ### 3.2 Fact Tables (3 ตาราง)
 
-| Fact | Grain (1 แถว = อะไร) | เชื่อม Dimension | ตอบคำถาม |
-|---|---|---|---|
-| `fact_order_items` | 1 รายการสินค้าในคำสั่งซื้อ (`order_id` + `order_item_id`) | **6 dims / 11 FK** (dim_date ×5, dim_geography ×2, products, customers, sellers, order_status) | 1–7, 9–15 |
-| `fact_order_payments` | 1 รายการชำระเงิน (`order_id` + `payment_sequential`) | 4 dims (dim_date, customers, geography, order_status) + payment_type | 6, 8 |
-| `fact_order_reviews` | 1 รีวิวต่อคำสั่งซื้อ (`review_id` + `order_id`) | 3 dims (dim_date ×3, customers, geography, order_status) | 12, 13 |
+| Table | Grain / Purpose | Base Measures | Measure Type | Calculated Measures |
+|---|---|---|---|---|
+| `fact_order_items` | 1 order line item (`order_id` + `order_item_id`) — 112,650 แถว | `price` , `freight_value` , `delivery_days` , `seller_processing_days` , `carrier_transit_days` , `delivery_delay_days` , `buyer_seller_distance_km` , `is_late_delivery` , `purchase_hour` | **Additive:** `price` , `freight_value` / **Semi-Additive:** `is_late_delivery` / **Non-Additive:** `delivery_days` , `seller_processing_days` , `carrier_transit_days` , `delivery_delay_days` , `buyer_seller_distance_km` , `purchase_hour` | `total_item_value` , Average Price per Item, Freight % of Price, Late-Delivery Rate, MoM Revenue Growth % |
+| `fact_order_payments` | 1 payment transaction (`order_id` + `payment_sequential`) — 103,886 แถว | `payment_value` , `payment_installments` | **Additive:** `payment_value` / **Non-Additive:** `payment_installments` | `instalment_amount` , Average Transaction Value, Split-Payment Rate |
+| `fact_order_reviews` | 1 review per order (`review_id` + `order_id`) — 99,224 แถว | `review_score` , `response_hours` , `has_comment` | **Non-Additive:** `review_score` , `response_hours` / **Semi-Additive:** `has_comment` , `is_positive` , `is_negative` | Average Review Score, Comment Rate, `comment_length` |
 
 > **กับดัก grain ที่เจอจริง:** `review_id` เพียงอย่างเดียว **ไม่ใช่ grain** — Olist ใช้ `review_id` เดียว
 > ครอบหลาย order เมื่อ 1 แบบสอบถามครอบหลายการซื้อ (789 review_id ครอบ 1,412 order) การ dedup ด้วย
 > `review_id` อย่างเดียวจะทำให้ **หายไป 814 แถว** grain ที่ถูกต้องคือคู่ `(review_id, order_id)` ซึ่ง unique
 > พอดี 99,224 แถว — มี test `assert_fact_order_reviews_grain_is_unique.sql` ล็อกไว้
 
-### 3.3 Measures และประเภท (Additivity)
+### 3.3 ทำไม Measure แต่ละตัวถึงเป็นประเภทนั้น
 
-| Measure | Fact | ประเภท | เหตุผล |
-|---|---|---|---|
-| `price` | items | **Additive** | รวมได้ทุกมิติ → รายได้สินค้า |
-| `freight_value` | items | **Additive** | รวมได้ทุกมิติ → ค่าขนส่งรวม |
-| `total_item_value` | items | **Additive** | = `price + freight_value` |
-| `payment_value` | payments | **Additive** | รวมได้ทุกมิติ → ยอดชำระรวม |
-| `is_late_delivery` (0/1) | items | **Semi-Additive** | นับได้ (จำนวนออเดอร์ที่ส่งช้า) แต่ต้องระวัง grain เมื่อ join |
-| `has_comment` / `is_positive` / `is_negative` (0/1) | reviews | **Semi-Additive** | นับได้ภายในชุดรีวิวที่กำหนด |
-| `delivery_days`, `seller_processing_days`, `carrier_transit_days`, `delivery_delay_days` | items | **Non-Additive** | ระยะเวลาต่อ 1 ออเดอร์ — ใช้ `AVG` / `MIN` / `MAX` เท่านั้น |
-| `buyer_seller_distance_km` | items | **Non-Additive** | ระยะทางต่อ 1 รายการ — ใช้ `AVG` |
-| `purchase_hour` (0–23) | items | **Non-Additive** | ค่าหมวดหมู่เชิงเวลา — ใช้ `GROUP BY` |
-| `payment_installments` | payments | **Non-Additive** | จำนวนงวด — ใช้ `AVG` |
-| `review_score` (1–5) | reviews | **Non-Additive** | ordinal scale — ใช้ `AVG` เท่านั้น |
-| `response_hours` | reviews | **Non-Additive** | ระยะเวลาต่อ 1 รีวิว — ใช้ `AVG` |
+| ประเภท | Measure | เหตุผล |
+|---|---|---|
+| **Additive** | `price`, `freight_value`, `total_item_value`, `payment_value` | รวมได้ตรงทุกมิติ (เวลา/สินค้า/ลูกค้า/ผู้ขาย) → SUM มีความหมายเป็นยอดรวมจริง |
+| **Semi-Additive** | `is_late_delivery`, `has_comment`, `is_positive`, `is_negative` (ทุกตัวเป็น flag 0/1) | นับ/รวมได้ภายในชุดที่กำหนด (เช่น "มีกี่ออเดอร์ที่ส่งช้า") แต่ต้องระวัง grain ตอน join ข้าม fact ไม่งั้นนับซ้ำ |
+| **Non-Additive** | `delivery_days`, `seller_processing_days`, `carrier_transit_days`, `delivery_delay_days`, `buyer_seller_distance_km`, `purchase_hour`, `payment_installments`, `review_score`, `response_hours` | เป็นระยะเวลา/ระยะทาง/ค่าหมวดหมู่/ordinal scale — SUM ข้ามแถวไม่มีความหมาย ใช้ได้แค่ `AVG` / `MIN` / `MAX` / `GROUP BY` |
 
 ---
 
