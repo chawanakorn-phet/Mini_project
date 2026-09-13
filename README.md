@@ -212,15 +212,15 @@ Query จริงของทุกข้ออยู่ที่ [`olist_dw/an
 เดิมไว้ต่างหาก + มี **Unknown member (key = -1)** สำหรับกรณี fact อ้างถึงค่าที่ไม่มี เพื่อไม่ให้แถว fact
 หายไปจากการ join
 
-| Dimension | Grain | Level / ลำดับชั้น (ละเอียด → หยาบ) | บทบาทพิเศษ |
-|---|---|---|---|
-| `dim_date` | 1 วัน (2016–2018) | Day → Month → Quarter → Year (+ fiscal_year, week) | **Conformed** ทั้ง 3 facts; **Role-playing** 5 บทบาทใน `fact_order_items`, 3 ใน `fact_order_reviews` |
-| `dim_geography` | 1 zip code prefix | Zip → City → State → Region (5 ภูมิภาคทางการของบราซิล) | **Conformed** ทั้ง 3 facts; **Role-playing** 2 บทบาท (ที่อยู่ลูกค้า/ผู้ขาย) ใน `fact_order_items` |
-| `dim_customers` | 1 `customer_id` | Customer → City → State (+ `customer_unique_id` สำหรับ repeat/RFM) | **Conformed** ทั้ง 3 facts |
-| `dim_sellers` | 1 `seller_id` | Seller → City → State | ใช้ใน `fact_order_items` |
-| `dim_products` | 1 `product_id` | Product → Category (แปลอังกฤษ) ; + `size_band` (Small/Medium/Large) | ใช้ใน `fact_order_items` |
-| `dim_order_status` | 1 สถานะ | สถานะ + `lifecycle_step` (1–8) + flag `is_delivered` / `is_cancelled` | **Conformed** ทั้ง 3 facts |
-| `dim_payment_type` | 1 วิธีชำระเงิน | วิธีชำระเงิน + flag `supports_instalments` / `is_valid_method` | ใช้ใน `fact_order_payments` |
+| Table | Type | Primary Key | Main Attributes | Purpose |
+|---|---|---|---|---|
+| `dim_date` | Dimension | `date_key` | `year` , `quarter` , `month` , `month_name` , `day_name` , `is_weekend` | วิเคราะห์ตามช่วงเวลา (Day→Month→Quarter→Year) — **Conformed ทั้ง 3 fact · Role-play 5 บทบาทใน `fact_order_items`, 3 ใน `fact_order_reviews`** |
+| `dim_geography` | Dimension | `geography_key` | `region` , `state` , `city` , `zip_code_prefix` , `latitude` , `longitude` | วิเคราะห์ตามภูมิศาสตร์ (Zip→City→State→Region) — **Conformed ทั้ง 3 fact · Role-play 2 บทบาท (ลูกค้า/ผู้ขาย)** |
+| `dim_customers` | Dimension | `customer_key` | `customer_id` , `customer_unique_id` , `state` , `city` | วิเคราะห์ลูกค้าและพฤติกรรมซื้อซ้ำ / RFM — **Conformed ทั้ง 3 fact** |
+| `dim_sellers` | Dimension | `seller_key` | `seller_id` , `state` , `city` , `geography_key` | วิเคราะห์ยอดขายและประสิทธิภาพผู้ขาย |
+| `dim_products` | Dimension | `product_key` | `category` , `size_band` , `photos_qty` , `weight_g` | วิเคราะห์สินค้าและหมวดหมู่ |
+| `dim_order_status` | Dimension | `order_status_key` | `order_status` , `status_label` , `lifecycle_step` , `is_delivered` | วิเคราะห์สถานะและวงจรคำสั่งซื้อ — **Conformed ทั้ง 3 fact** |
+| `dim_payment_type` | Dimension | `payment_type_key` | `payment_type` , `payment_label` , `supports_instalments` | วิเคราะห์วิธีการชำระเงิน |
 
 > **`dim_geography` คือการเปลี่ยนแปลงหลักจากโมเดลเดิม** — เดิมที่อยู่ลูกค้ากับผู้ขายเป็นคอลัมน์กระจัดกระจาย
 > อยู่คนละตาราง ทำให้ "รัฐที่ซื้อ" กับ "รัฐที่ขาย" นับกันคนละแบบ ตอนนี้ยุบตาราง geolocation 1 ล้านแถว
@@ -252,46 +252,142 @@ Query จริงของทุกข้ออยู่ที่ [`olist_dw/an
 ## 4. Data Model Diagram — Galaxy Schema
 
 ```mermaid
-graph TB
-    subgraph "Conformed Dimensions (ใช้ร่วมกันทั้ง 3 Fact)"
-        DD[dim_date<br/>role-play: purchased / approved /<br/>to-carrier / delivered / promised /<br/>review-created / review-answered]
-        DG[dim_geography<br/>role-play: buyer location / seller location<br/>Zip → City → State → Region]
-        DC[dim_customers<br/>customer_id + customer_unique_id]
-        DOS[dim_order_status<br/>lifecycle_step 1–8]
-    end
+erDiagram
+    dim_date {
+        int date_key PK
+        date full_date
+        int year
+        int quarter
+        string year_quarter
+        int month
+        string month_name
+        string year_month
+        int day_of_week
+        string day_name
+        boolean is_weekend
+    }
+    dim_geography {
+        int geography_key PK
+        int zip_code_prefix
+        string city
+        string state
+        string region
+        float latitude
+        float longitude
+    }
+    dim_customers {
+        int customer_key PK
+        string customer_id
+        string customer_unique_id
+        int geography_key FK
+        string city
+        string state
+    }
+    dim_sellers {
+        int seller_key PK
+        string seller_id
+        int geography_key FK
+        string city
+        string state
+    }
+    dim_products {
+        int product_key PK
+        string product_id
+        string category
+        int photos_qty
+        int weight_g
+        string size_band
+    }
+    dim_order_status {
+        int order_status_key PK
+        string order_status
+        string status_label
+        int lifecycle_step
+        boolean is_delivered
+    }
+    dim_payment_type {
+        int payment_type_key PK
+        string payment_type
+        string payment_label
+        boolean supports_instalments
+    }
+    fact_order_items {
+        string order_id PK
+        int order_item_id PK
+        int purchase_date_key FK
+        int approved_date_key FK
+        int carrier_date_key FK
+        int delivered_date_key FK
+        int estimated_date_key FK
+        int product_key FK
+        int customer_key FK
+        int seller_key FK
+        int order_status_key FK
+        int customer_geography_key FK
+        int seller_geography_key FK
+        float price
+        float freight_value
+        int delivery_days
+        int seller_processing_days
+        int carrier_transit_days
+        float buyer_seller_distance_km
+        boolean is_late_delivery
+    }
+    fact_order_payments {
+        string order_id PK
+        int payment_sequential PK
+        int purchase_date_key FK
+        int customer_key FK
+        int customer_geography_key FK
+        int payment_type_key FK
+        int order_status_key FK
+        float payment_value
+        int payment_installments
+    }
+    fact_order_reviews {
+        string review_id PK
+        string order_id PK
+        int purchase_date_key FK
+        int review_created_date_key FK
+        int review_answered_date_key FK
+        int customer_key FK
+        int customer_geography_key FK
+        int order_status_key FK
+        int review_score
+        int response_hours
+    }
 
-    subgraph "Fact Constellation"
-        FI[["fact_order_items<br/>grain: order_id + order_item_id<br/>112,650 แถว"]]
-        FP[["fact_order_payments<br/>grain: order_id + payment_sequential<br/>103,886 แถว"]]
-        FR[["fact_order_reviews<br/>grain: review_id + order_id<br/>99,224 แถว"]]
-    end
+    dim_date       ||--o{ fact_order_items    : "purchased on"
+    dim_date       ||--o{ fact_order_items    : "approved on"
+    dim_date       ||--o{ fact_order_items    : "sent to carrier on"
+    dim_date       ||--o{ fact_order_items    : "delivered on"
+    dim_date       ||--o{ fact_order_items    : "promised by"
+    dim_geography  ||--o{ fact_order_items    : "buyer location"
+    dim_geography  ||--o{ fact_order_items    : "seller location"
+    dim_products   ||--o{ fact_order_items    : "product sold"
+    dim_customers  ||--o{ fact_order_items    : "customer"
+    dim_sellers    ||--o{ fact_order_items    : "seller"
+    dim_order_status ||--o{ fact_order_items  : "status"
 
-    subgraph "Local Dimensions"
-        DP[dim_products<br/>Product → Category]
-        DS[dim_sellers<br/>Seller → City → State]
-        DPT[dim_payment_type]
-    end
+    dim_date       ||--o{ fact_order_payments : "purchased on"
+    dim_geography  ||--o{ fact_order_payments : "buyer location"
+    dim_customers  ||--o{ fact_order_payments : "customer"
+    dim_payment_type ||--o{ fact_order_payments : "method"
+    dim_order_status ||--o{ fact_order_payments : "status"
 
-    DD --- FI
-    DD --- FP
-    DD --- FR
-    DG --- FI
-    DG --- FP
-    DG --- FR
-    DC --- FI
-    DC --- FP
-    DC --- FR
-    DOS --- FI
-    DOS --- FP
-    DOS --- FR
-    DP --- FI
-    DS --- FI
-    DPT --- FP
-
-    FI -. "order_id" .- FP
-    FI -. "order_id" .- FR
-    FP -. "order_id" .- FR
+    dim_date       ||--o{ fact_order_reviews  : "purchased on"
+    dim_date       ||--o{ fact_order_reviews  : "review created on"
+    dim_date       ||--o{ fact_order_reviews  : "review answered on"
+    dim_geography  ||--o{ fact_order_reviews  : "buyer location"
+    dim_customers  ||--o{ fact_order_reviews  : "customer"
+    dim_order_status ||--o{ fact_order_reviews : "status"
 ```
+
+**อ่าน diagram นี้ยังไง:** `dim_date` และ `dim_geography` มีเส้นออกไปหา `fact_order_items` **หลายเส้น** —
+นั่นคือ **role-playing dimension** ตารางเดียวกัน แต่ทำหน้าที่ต่างบทบาทในคำสั่งซื้อเดียวกัน (วันสั่ง/วันอนุมัติ/
+วันส่งขนส่ง/วันถึงลูกค้า/วันสัญญา สำหรับ `dim_date`, ที่อยู่ผู้ซื้อ/ผู้ขาย สำหรับ `dim_geography`)
+ส่วน `dim_customers`, `dim_order_status` มีเส้นไปหา**ทั้ง 3 fact** — นั่นคือ **conformed dimension**
+ที่ทำให้ drill-across ข้าม fact ทำได้จริง
 
 ### ทำไมต้องเป็น Galaxy Schema (ไม่ใช่ Star เดียว)
 
