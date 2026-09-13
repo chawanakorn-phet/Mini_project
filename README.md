@@ -22,7 +22,6 @@ OLTP ของตลาดกลางออนไลน์ [Olist](https://www.
 7. [Interactive Dashboard](#7-interactive-dashboard)
 8. [Team Contribution](#8-team-contribution)
 9. [โครงสร้าง Repository + วิธีรัน](#9-โครงสร้าง-repository--วิธีรัน)
-10. [Presentation](#10-presentation)
 
 ---
 
