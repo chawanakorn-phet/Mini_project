@@ -8,6 +8,7 @@ OLTP ของตลาดกลางออนไลน์ [Olist](https://www.
 โครงสร้างที่ใช้คือ **Fact Constellation (Galaxy Schema)** — Fact 3 ตารางที่ grain ต่างกัน
 ใช้ Dimension ร่วมกัน (conformed) เพื่อให้ตอบคำถามที่ต้องข้าม business process ได้
 
+🔗 **Presentation Slides:** https://www.canva.com/design/DAHTqUQbQgc/4cp8nnzQticiaEoR4cIaCQ/edit
 
 ---
 
