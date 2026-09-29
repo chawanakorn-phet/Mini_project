@@ -12,308 +12,346 @@
 -- through, and the measure(s) it aggregates, so the link from question to
 -- model is explicit.
 --
--- Q6, Q12 and Q13 are DRILL-ACROSS queries: they aggregate two fact tables to
--- a common grain and join the results on a CONFORMED dimension. They are why
--- this warehouse is a fact constellation and not a single star -- no one fact
+-- Q5, Q9 and Q15 are DRILL-ACROSS queries: they aggregate two fact tables to
+-- a common grain (the order) and join the results on a CONFORMED dimension
+-- (the order_id itself, plus dim_products for Q15). They are why this
+-- warehouse is a fact constellation and not a single star -- no one fact
 -- can answer them.
 -- ============================================================================
 
 
 -- ============================================================================
--- Q1. หมวดหมู่สินค้าใดมียอดขายรวมและจำนวนสินค้าที่ขายสูงที่สุด?
---     Fact: fact_order_items | Dimension: dim_products (category)
---     Measures: SUM(price) additive, COUNT(*) additive
+-- Q1. แต่ละเดือนหมวดหมู่สินค้าใดสร้างยอดขายสูงที่สุด?
+--     Fact: fact_order_items | Dimension: dim_products (category) + dim_date (month)
+--     Measure: SUM(price) -- pick the category with the highest sum per month
 -- ============================================================================
-select
-    dp.category                                            as product_category,
-    count(*)                                               as items_sold,
-    round(sum(f.price), 2)                                 as total_revenue,
-    round(sum(f.freight_value), 2)                         as total_freight
-from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_products') }} as dp on dp.product_key = f.product_key
-group by 1
-order by total_revenue desc
-limit 15;
+with monthly_category as (
+    select
+        d.year,
+        d.month,
+        d.month_name,
+        p.category,
+        sum(f.price) as revenue
+    from {{ ref('fact_order_items') }} as f
+    join {{ ref('dim_date') }} as d on d.date_key = f.purchase_date_key
+    join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+    where p.category <> 'unknown'
+    group by 1, 2, 3, 4
+),
+ranked as (
+    select
+        *,
+        row_number() over (partition by year, month order by revenue desc) as rn
+    from monthly_category
+)
+select year, month, month_name, category as top_category, round(revenue, 2) as revenue
+from ranked
+where rn = 1
+order by year, month;
 
 
 -- ============================================================================
--- Q2. ยอดขายและจำนวนคำสั่งซื้อมีแนวโน้มเปลี่ยนแปลงอย่างไรในแต่ละเดือนและปี?
---     Fact: fact_order_items | Dimension: dim_date (year, month roll-up)
---     Measures: SUM(price), COUNT(DISTINCT order_id), month-over-month growth %
+-- Q2. ในแต่ละปี เดือนใดมียอดขายสูงที่สุด?
+--     Fact: fact_order_items | Dimension: dim_date (year -> month)
+--     Measure: SUM(price) -- pick the month with the highest sum per year
 -- ============================================================================
 with monthly as (
-    select
-        dd.year,
-        dd.year_month,
-        sum(f.price)                   as revenue,
-        count(distinct f.order_id)     as orders
+    select d.year, d.month, d.month_name, sum(f.price) as revenue
     from {{ ref('fact_order_items') }} as f
-    join {{ ref('dim_date') }} as dd on dd.date_key = f.purchase_date_key
-    where dd.date_key <> -1
-    group by 1, 2
+    join {{ ref('dim_date') }} as d on d.date_key = f.purchase_date_key
+    group by 1, 2, 3
+),
+ranked as (
+    select *, row_number() over (partition by year order by revenue desc) as rn
+    from monthly
 )
-select
-    year_month,
-    round(revenue, 2)  as revenue,
-    orders,
-    round(100.0 * (revenue - lag(revenue) over (order by year_month))
-        / nullif(lag(revenue) over (order by year_month), 0), 1) as mom_growth_pct
-from monthly
-order by year_month;
-
--- companion: totals per year
-select
-    dd.year,
-    round(sum(f.price), 2)             as revenue,
-    count(distinct f.order_id)         as orders
-from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_date') }} as dd on dd.date_key = f.purchase_date_key
-where dd.date_key <> -1
-group by 1
-order by 1;
+select year, month, month_name, round(revenue, 2) as revenue
+from ranked
+where rn = 1
+order by year;
 
 
 -- ============================================================================
--- Q3. หมวดหมู่สินค้าใดมีราคาเฉลี่ยต่อชิ้นสูงที่สุด และมีจำนวนการขายมากน้อยเพียงใด?
---     Fact: fact_order_items | Dimension: dim_products (category)
---     Measures: AVG(price) non-additive, COUNT(*) additive
---     (HAVING COUNT >= 30 กันหมวดหมู่ที่มีตัวอย่างน้อยเกินไป)
+-- Q3. แต่ละปีสินค้าแต่ละหมวดหมู่มียอดขายแตกต่างกันเท่าใด?
+--     Fact: fact_order_items | Dimension: dim_products (category) + dim_date (year)
+--     Measure: SUM(price) เทียบข้ามปี -- top 8 categories by all-time revenue
+-- ============================================================================
+with yearly_category as (
+    select d.year, p.category, sum(f.price) as revenue
+    from {{ ref('fact_order_items') }} as f
+    join {{ ref('dim_date') }} as d on d.date_key = f.purchase_date_key
+    join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+    where p.category <> 'unknown'
+    group by 1, 2
+),
+top_categories as (
+    select category
+    from yearly_category
+    group by category
+    order by sum(revenue) desc
+    limit 8
+)
+select yc.year, yc.category, round(yc.revenue, 2) as revenue
+from yearly_category as yc
+join top_categories as tc on tc.category = yc.category
+order by yc.category, yc.year;
+
+
+-- ============================================================================
+-- Q4. หมวดหมู่สินค้าใดที่ถูกยกเลิกมากที่สุด?
+--     Fact: fact_order_items | Dimension: dim_products (category) + dim_order_status
+--     Measure: COUNT(*) เฉพาะสถานะ canceled
+--
+--     ข้อนี้เดิมตั้งเป็น "ระยะเวลาจัดส่งมีผลต่อการยกเลิกไหม" แต่ตรวจข้อมูลจริงแล้วพบว่า
+--     ออเดอร์ที่ถูกยกเลิกมีแค่ 542 จาก 112,650 แถว (0.5%) และมีเพียง 7 แถวที่มีค่า
+--     delivery_days (ถูกยกเลิกก่อนจัดส่งจริง จึงไม่มีวันที่ส่งของให้คำนวณ) -- ตัวอย่างน้อย
+--     เกินจะสรุปแนวโน้มได้ จึงเปลี่ยนตัวแปรต้นเป็นหมวดหมู่สินค้าแทน
 -- ============================================================================
 select
-    dp.category                                            as product_category,
-    count(*)                                               as items_sold,
-    round(avg(f.price), 2)                                 as avg_price_per_item,
-    round(min(f.price), 2)                                 as min_price,
-    round(max(f.price), 2)                                 as max_price
+    p.category,
+    count(*) as cancelled_items
 from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_products') }} as dp on dp.product_key = f.product_key
+join {{ ref('dim_order_status') }} as os on os.order_status_key = f.order_status_key
+join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+where os.order_status = 'canceled'
+  and p.category <> 'unknown'
 group by 1
-having count(*) >= 30
-order by avg_price_per_item desc
+order by cancelled_items desc
 limit 15;
 
 
 -- ============================================================================
--- Q4. ลูกค้าในรัฐและเมืองใดสร้างยอดขายรวมสูงที่สุด?
---     Fact: fact_order_items | Dimension: dim_geography via customer_geography_key
---           (Region -> State -> City hierarchy)
---     Measures: SUM(price), COUNT(DISTINCT order_id)
+-- Q5. DRILL-ACROSS (fact_order_items + fact_order_reviews, conformed on the
+--     order).
+--     ระยะเวลาขนส่งสินค้ามีผลต่อคะแนนรีวิวหรือไม่?
+--     Delivery time lives on fact_order_items -- the review score lives on
+--     fact_order_reviews -- they are joined at the order grain.
 -- ============================================================================
-select
-    dg.region,
-    dg.state,
-    dg.city,
-    count(distinct f.order_id)                             as orders,
-    round(sum(f.price), 2)                                 as total_revenue
-from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_geography') }} as dg on dg.geography_key = f.customer_geography_key
-where dg.geography_key <> -1
-group by 1, 2, 3
-order by total_revenue desc
-limit 20;
-
-
--- ============================================================================
--- Q5. ลูกค้าที่กลับมาซื้อซ้ำคิดเป็นกี่เปอร์เซ็นต์ของลูกค้าทั้งหมด?
---     Fact: fact_order_items | Dimension: dim_customers (customer_unique_id)
---     Measure: COUNT(DISTINCT order_id) per person
--- ============================================================================
-with per_person as (
-    select
-        dc.customer_unique_id,
-        count(distinct f.order_id)     as orders,
-        sum(f.price)                   as revenue
-    from {{ ref('fact_order_items') }} as f
-    join {{ ref('dim_customers') }} as dc on dc.customer_key = f.customer_key
-    group by 1
-)
-select
-    case when orders = 1 then 'One-time buyer' else 'Repeat buyer (2+)' end as customer_group,
-    count(*)                                               as customers,
-    round(100.0 * count(*) / sum(count(*)) over (), 1)     as pct_of_customers,
-    round(sum(revenue), 2)                                 as revenue,
-    round(100.0 * sum(revenue) / sum(sum(revenue)) over (), 1) as pct_of_revenue
-from per_person
-group by 1
-order by customers desc;
-
-
--- ============================================================================
--- Q6. DRILL-ACROSS (fact_order_items + fact_order_payments, conformed on the
---     order and dim_date).
---     ยอดที่ลูกค้าจ่ายจริงตรงกับมูลค่าสินค้าในตะกร้าหรือไม่ และช่องว่างขยายตาม
---     จำนวนงวดผ่อนไหม (ดอกเบี้ย)?
---     Item value lives in fact_order_items -- amount paid lives in
---     fact_order_payments -- the two sit at different grains, so this cannot be
---     answered from either fact alone.
--- ============================================================================
-with basket as (
-    select order_id, sum(total_item_value) as basket_value
+with delivery as (
+    select order_id, avg(delivery_days) as delivery_days
     from {{ ref('fact_order_items') }}
+    where delivery_days is not null
     group by 1
 ),
-paid as (
-    select
-        order_id,
-        sum(payment_value)        as amount_paid,
-        max(payment_installments) as max_instalments
-    from {{ ref('fact_order_payments') }}
+review as (
+    select order_id, avg(review_score) as review_score
+    from {{ ref('fact_order_reviews') }}
     group by 1
 )
 select
     case
-        when p.max_instalments <= 1 then '1 (pay in full)'
-        when p.max_instalments <= 3 then '2-3'
-        when p.max_instalments <= 6 then '4-6'
-        when p.max_instalments <= 12 then '7-12'
-        else '13+'
-    end                                                   as instalments,
-    count(*)                                               as orders,
-    round(avg(b.basket_value), 2)                          as avg_basket_value,
-    round(avg(p.amount_paid), 2)                           as avg_amount_paid,
-    round(avg(p.amount_paid - b.basket_value), 2)          as avg_gap
-from basket as b
-join paid as p on p.order_id = b.order_id
-group by 1
-order by min(p.max_instalments);
-
-
--- ============================================================================
--- Q7. RFM Analysis: ลูกค้ากลุ่มใดมีมูลค่า (Monetary) และความถี่ (Frequency)
---     ในการซื้อสูงที่สุด?
---     Fact: fact_order_items | Dimension: dim_customers + dim_date
---     Measures: Recency = days since last order, Frequency = COUNT(order_id),
---               Monetary = SUM(price)  -- then NTILE(5) quintiles
--- ============================================================================
-with customer_orders as (
-    select
-        dc.customer_unique_id,
-        f.order_id,
-        max(dd.full_date)  as order_date,
-        sum(f.price)       as order_value
-    from {{ ref('fact_order_items') }} as f
-    join {{ ref('dim_customers') }} as dc on dc.customer_key   = f.customer_key
-    join {{ ref('dim_date') }}      as dd on dd.date_key        = f.purchase_date_key
-    where dd.date_key <> -1
-    group by 1, 2
-),
-rfm as (
-    select
-        customer_unique_id,
-        date_diff('day', max(order_date),
-                  (select max(order_date) from customer_orders)) as recency_days,
-        count(distinct order_id)                                 as frequency,
-        sum(order_value)                                         as monetary
-    from customer_orders
-    group by 1
-),
-scored as (
-    select
-        customer_unique_id,
-        recency_days,
-        frequency,
-        monetary,
-        ntile(5) over (order by monetary) as monetary_quintile
-    from rfm
-)
-select
-    monetary_quintile,
-    count(*)                                               as customers,
-    round(avg(recency_days), 0)                            as avg_recency_days,
-    round(avg(frequency), 2)                               as avg_frequency,
-    round(avg(monetary), 2)                                as avg_monetary,
-    round(100.0 * sum(monetary) / sum(sum(monetary)) over (), 1) as pct_of_revenue
-from scored
-group by 1
-order by monetary_quintile desc;
-
-
--- ============================================================================
--- Q8. วิธีการชำระเงินใดถูกใช้งานมากที่สุด และมีมูลค่าการชำระเงินเฉลี่ยเท่าใด?
---     Fact: fact_order_payments | Dimension: dim_payment_type
---     Measures: COUNT(DISTINCT order_id), AVG(payment_value) non-additive
--- ============================================================================
-select
-    dpt.payment_label,
-    count(distinct fp.order_id)                            as orders,
-    round(sum(fp.payment_value), 2)                        as total_paid,
-    round(avg(fp.payment_value), 2)                        as avg_payment_value,
-    round(avg(fp.payment_installments), 1)                 as avg_installments
-from {{ ref('fact_order_payments') }} as fp
-join {{ ref('dim_payment_type') }} as dpt on dpt.payment_type_key = fp.payment_type_key
-where dpt.is_valid_method
-group by 1
-order by orders desc;
-
-
--- ============================================================================
--- Q9. ผู้ขายในรัฐหรือเมืองใดมีระยะเวลาเตรียมสินค้าเฉลี่ยสูงที่สุด?
---     Fact: fact_order_items | Dimension: dim_sellers (state)
---     Measure: AVG(seller_processing_days) non-additive
---     (HAVING COUNT >= 50 -- ผู้ขายกระจายรายเมืองมาก จึงสรุปที่ระดับรัฐ)
--- ============================================================================
-select
-    ds.state                                               as seller_state,
-    count(distinct ds.seller_id)                           as sellers,
-    count(*)                                               as items_shipped,
-    round(avg(f.seller_processing_days), 1)                as avg_processing_days,
-    round(avg(f.carrier_transit_days), 1)                  as avg_carrier_days
-from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_sellers') }} as ds on ds.seller_key = f.seller_key
-where f.seller_processing_days is not null
-  and ds.seller_id <> 'unknown'
-group by 1
-having count(*) >= 50
-order by avg_processing_days desc;
-
-
--- ============================================================================
--- Q10. ระยะเวลาขนส่งและความล่าช้าในการจัดส่งแตกต่างกันอย่างไรในแต่ละเดือน?
---      Fact: fact_order_items | Dimension: dim_date (delivered date role)
---      Measures: AVG(delivery_days), AVG(carrier_transit_days),
---                AVG(delivery_delay_days), rate of is_late_delivery
--- ============================================================================
-select
-    dd.year_month,
-    count(*)                                               as delivered_items,
-    round(avg(f.delivery_days), 1)                         as avg_delivery_days,
-    round(avg(f.carrier_transit_days), 1)                  as avg_carrier_days,
-    round(100.0 * avg(f.is_late_delivery), 1)              as late_rate_pct,
-    round(avg(f.delivery_delay_days), 1)                   as avg_delay_days
-from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_date') }} as dd on dd.date_key = f.delivered_date_key
-where dd.date_key <> -1
-  and f.delivery_days is not null
+        when d.delivery_days < 7  then '1. น้อยกว่า 7 วัน'
+        when d.delivery_days < 14 then '2. 7-13 วัน'
+        when d.delivery_days < 21 then '3. 14-20 วัน'
+        else '4. 21 วันขึ้นไป'
+    end as delivery_bucket,
+    count(*) as orders,
+    round(avg(r.review_score), 2) as avg_review_score
+from delivery as d
+join review as r on r.order_id = d.order_id
 group by 1
 order by 1;
 
 
 -- ============================================================================
--- Q11. หมวดหมู่สินค้าใดมีสัดส่วนค่าจัดส่งต่อราคาสินค้าสูงที่สุด?
---      Fact: fact_order_items | Dimension: dim_products (category, size_band)
---      Measures: SUM(freight_value), SUM(price), ratio (non-additive)
+-- Q6. ราคาสินค้ามีผลต่อค่าส่งหรือไม่?
+--     Fact: fact_order_items | Measure: price (bucket) vs AVG(freight_value)
 -- ============================================================================
 select
-    dp.category,
-    dp.size_band,
-    count(*)                                               as items_sold,
-    round(sum(f.price), 2)                                 as revenue,
-    round(sum(f.freight_value), 2)                         as freight,
-    round(100.0 * sum(f.freight_value) / nullif(sum(f.price), 0), 1) as freight_pct_of_price
-from {{ ref('fact_order_items') }} as f
-join {{ ref('dim_products') }} as dp on dp.product_key = f.product_key
-group by 1, 2
-having count(*) >= 50
-order by freight_pct_of_price desc
-limit 15;
+    case
+        when price < 50   then '1. ต่ำกว่า R$50'
+        when price < 100  then '2. R$50-99'
+        when price < 200  then '3. R$100-199'
+        when price < 400  then '4. R$200-399'
+        else '5. R$400 ขึ้นไป'
+    end as price_bucket,
+    count(*) as items,
+    round(avg(freight_value), 2) as avg_freight
+from {{ ref('fact_order_items') }}
+group by 1
+order by 1;
 
 
 -- ============================================================================
--- Q12. DRILL-ACROSS (fact_order_items + fact_order_reviews, conformed on the
+-- Q7. ขนาดสินค้ามีผลต่อค่าส่งหรือไม่?
+--     Fact: fact_order_items | Dimension: dim_products (size_band)
+--     Measure: AVG(freight_value) ต่อ size_band
+-- ============================================================================
+select
+    p.size_band,
+    count(*) as items,
+    round(avg(f.freight_value), 2) as avg_freight
+from {{ ref('fact_order_items') }} as f
+join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+where p.size_band <> 'Unknown'
+group by 1
+order by avg_freight;
+
+
+-- ============================================================================
+-- Q8. น้ำหนักสินค้ามีผลต่อค่าส่งหรือไม่?
+--     Fact: fact_order_items | Dimension: dim_products (weight_g, bucket)
+--     Measure: AVG(freight_value)
+-- ============================================================================
+select
+    case
+        when p.weight_g < 500   then '1. น้อยกว่า 500 กรัม'
+        when p.weight_g < 2000  then '2. 500 กรัม - 2 กก.'
+        when p.weight_g < 5000  then '3. 2-5 กก.'
+        when p.weight_g < 10000 then '4. 5-10 กก.'
+        else '5. มากกว่า 10 กก.'
+    end as weight_bucket,
+    count(*) as items,
+    round(avg(f.freight_value), 2) as avg_freight
+from {{ ref('fact_order_items') }} as f
+join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+where p.weight_g is not null
+group by 1
+order by 1;
+
+
+-- ============================================================================
+-- Q9. DRILL-ACROSS (fact_order_items + fact_order_reviews, conformed on the
+--     order).
+--     ค่าส่งมีผลต่อคะแนนรีวิวหรือไม่?
+--     Freight % of basket value lives on fact_order_items -- the review score
+--     lives on fact_order_reviews.
+-- ============================================================================
+with freight as (
+    select order_id, sum(freight_value) as freight_value, sum(price) as basket_value
+    from {{ ref('fact_order_items') }}
+    group by 1
+),
+review as (
+    select order_id, avg(review_score) as review_score
+    from {{ ref('fact_order_reviews') }}
+    group by 1
+)
+select
+    case
+        when 100.0 * f.freight_value / nullif(f.basket_value, 0) < 10 then '1. ต่ำกว่า 10%'
+        when 100.0 * f.freight_value / nullif(f.basket_value, 0) < 20 then '2. 10-19%'
+        when 100.0 * f.freight_value / nullif(f.basket_value, 0) < 30 then '3. 20-29%'
+        else '4. 30% ขึ้นไป'
+    end as freight_pct_bucket,
+    count(*) as orders,
+    round(avg(r.review_score), 2) as avg_review_score
+from freight as f
+join review as r on r.order_id = f.order_id
+where f.basket_value > 0
+group by 1
+order by 1;
+
+
+-- ============================================================================
+-- Q10. ในแต่ละเดือน วิธีการชำระเงินใดถูกใช้มากที่สุด?
+--      Fact: fact_order_payments | Dimension: dim_payment_type + dim_date (month)
+--      Measure: COUNT(DISTINCT order_id) ต่อวิธีต่อเดือน
+-- ============================================================================
+select
+    d.year,
+    d.month,
+    d.month_name,
+    pt.payment_label,
+    count(distinct fp.order_id) as orders
+from {{ ref('fact_order_payments') }} as fp
+join {{ ref('dim_date') }} as d on d.date_key = fp.purchase_date_key
+join {{ ref('dim_payment_type') }} as pt on pt.payment_type_key = fp.payment_type_key
+where pt.is_valid_method
+group by 1, 2, 3, 4
+order by 1, 2, orders desc;
+
+
+-- ============================================================================
+-- Q11. จำนวนรูปภาพของสินค้ามีผลต่อยอดคำสั่งซื้อหรือไม่?
+--      Fact: fact_order_items | Dimension: dim_products (photos_qty, bucket)
+--      Measure: COUNT(DISTINCT order_id), SUM(price)
+-- ============================================================================
+select
+    case
+        when p.photos_qty = 0  then '0 รูป'
+        when p.photos_qty <= 2 then '1-2 รูป'
+        when p.photos_qty <= 4 then '3-4 รูป'
+        when p.photos_qty <= 6 then '5-6 รูป'
+        else '7 รูปขึ้นไป'
+    end as photo_bucket,
+    min(p.photos_qty)               as sort_key,
+    count(distinct f.order_id)      as orders,
+    round(sum(f.price), 2)          as revenue
+from {{ ref('fact_order_items') }} as f
+join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+where p.photos_qty is not null
+group by 1
+order by sort_key;
+
+
+-- ============================================================================
+-- Q12. ช่วงเวลาไหนของวันที่มีปริมาณคำสั่งซื้อมากที่สุด?
+--      Fact: fact_order_items | Dimension: dim_date (purchase_hour)
+--      Measure: COUNT(DISTINCT order_id)
+-- ============================================================================
+select
+    f.purchase_hour,
+    count(distinct f.order_id) as orders
+from {{ ref('fact_order_items') }} as f
+where f.purchase_hour is not null
+group by 1
+order by 1;
+
+
+-- ============================================================================
+-- Q13. ในแต่ละเดือนสินค้าประเภทใดขายได้เยอะที่สุด (นับเป็นจำนวนชิ้น)?
+--      Fact: fact_order_items | Dimension: dim_products (category) + dim_date (month)
+--      Measure: COUNT(*) -- จำนวนชิ้น, ไม่ใช่มูลค่าเงินแบบ Q1
+-- ============================================================================
+with monthly_category as (
+    select
+        d.year,
+        d.month,
+        d.month_name,
+        p.category,
+        count(*) as units_sold
+    from {{ ref('fact_order_items') }} as f
+    join {{ ref('dim_date') }} as d on d.date_key = f.purchase_date_key
+    join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+    where p.category <> 'unknown'
+    group by 1, 2, 3, 4
+),
+ranked as (
+    select
+        *,
+        row_number() over (partition by year, month order by units_sold desc) as rn
+    from monthly_category
+)
+select year, month, month_name, category as top_category, units_sold
+from ranked
+where rn = 1
+order by year, month;
+
+
+-- ============================================================================
+-- Q14. ขนาดสินค้ามีผลทำให้การส่งเกิดการล่าช้าหรือไม่?
+--      Fact: fact_order_items | Dimension: dim_products (size_band)
+--      Measure: AVG(is_late_delivery), AVG(delivery_delay_days) ต่อ size_band
+-- ============================================================================
+select
+    p.size_band,
+    count(*) as items,
+    round(100.0 * avg(f.is_late_delivery), 1) as late_rate_pct,
+    round(avg(case when f.is_late_delivery = 1 then f.delivery_delay_days end), 1) as avg_days_late
+from {{ ref('fact_order_items') }} as f
+join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+where p.size_band <> 'Unknown' and f.is_late_delivery is not null
+group by 1
+order by late_rate_pct desc;
+
+
+-- ============================================================================
+-- Q15. DRILL-ACROSS (fact_order_items + fact_order_payments, conformed on the
 --      order and dim_products).
---      หมวดหมู่สินค้าใดมีคะแนนรีวิวเฉลี่ยสูงที่สุดและต่ำที่สุด?
---      Category lives on fact_order_items -- the review score lives on
---      fact_order_reviews -- they are joined at the order grain.
+--      หมวดหมู่สินค้าใดมีการชำระแบบผ่อนสูงสุด?
+--      Category lives on fact_order_items -- installments live on
+--      fact_order_payments -- joined at the order grain.
 -- ============================================================================
 with order_category as (
     -- each order's dominant category (by item count)
@@ -321,152 +359,30 @@ with order_category as (
     from (
         select
             f.order_id,
-            dp.category,
+            p.category,
             row_number() over (
                 partition by f.order_id order by count(*) desc
             ) as rn
         from {{ ref('fact_order_items') }} as f
-        join {{ ref('dim_products') }} as dp on dp.product_key = f.product_key
+        join {{ ref('dim_products') }} as p on p.product_key = f.product_key
+        where p.category <> 'unknown'
         group by 1, 2
     )
     where rn = 1
 ),
-order_score as (
-    select order_id, avg(review_score) as review_score
-    from {{ ref('fact_order_reviews') }}
+order_payment as (
+    select order_id, max(payment_installments) as installments
+    from {{ ref('fact_order_payments') }}
     group by 1
 )
 select
-    oc.category                                            as product_category,
-    count(*)                                               as orders_reviewed,
-    round(avg(os.review_score), 2)                         as avg_review_score
+    oc.category,
+    count(*) as orders,
+    round(avg(op.installments), 2) as avg_installments,
+    round(100.0 * avg(case when op.installments > 1 then 1 else 0 end), 1) as pct_installment_orders
 from order_category as oc
-join order_score    as os on os.order_id = oc.order_id
+join order_payment as op on op.order_id = oc.order_id
 group by 1
 having count(*) >= 50
-order by avg_review_score desc;
-
-
--- ============================================================================
--- Q13. DRILL-ACROSS (fact_order_items + fact_order_reviews, conformed on the
---      order, dim_customers and dim_date).
---      คะแนนรีวิวได้รับผลกระทบจากอะไรมากกว่ากัน -- การส่งช้า หรือระยะทาง
---      ระหว่างผู้ซื้อกับผู้ขาย?
---      buyer_seller_distance_km is computed from the two role-playing geography
---      keys on fact_order_items -- the review score lives on fact_order_reviews.
--- ============================================================================
--- 13a -- by late/on-time
-with delivery as (
-    select
-        order_id,
-        max(is_late_delivery)    as was_late,
-        avg(delivery_delay_days) as delay_days
-    from {{ ref('fact_order_items') }}
-    where is_late_delivery is not null
-    group by 1
-),
-review as (
-    select order_id, avg(review_score) as review_score
-    from {{ ref('fact_order_reviews') }}
-    group by 1
-)
-select
-    case
-        when d.was_late = 0            then '1. On time or early'
-        when d.delay_days < 3          then '2. Late 1-2 days'
-        when d.delay_days < 7          then '3. Late 3-6 days'
-        else                               '4. Late a week or more'
-    end                                                   as delivery_outcome,
-    count(*)                                               as orders,
-    round(avg(r.review_score), 2)                          as avg_review_score
-from delivery as d
-join review   as r on r.order_id = d.order_id
-group by 1
-order by 1;
-
--- 13b -- by buyer-seller distance
-with dist as (
-    select order_id, avg(buyer_seller_distance_km) as distance_km
-    from {{ ref('fact_order_items') }}
-    where buyer_seller_distance_km is not null
-    group by 1
-),
-review as (
-    select order_id, avg(review_score) as review_score
-    from {{ ref('fact_order_reviews') }}
-    group by 1
-)
-select
-    case
-        when d.distance_km < 100  then '1. under 100 km'
-        when d.distance_km < 500  then '2. 100-500 km'
-        when d.distance_km < 1500 then '3. 500-1500 km'
-        else                           '4. over 1500 km'
-    end                                                   as distance_band,
-    count(*)                                               as orders,
-    round(avg(d.distance_km), 0)                           as avg_km,
-    round(avg(r.review_score), 2)                          as avg_review_score
-from dist   as d
-join review as r on r.order_id = d.order_id
-group by 1
-order by 1;
-
-
--- ============================================================================
--- Q14. ผู้ขายกลุ่ม Top 10% สร้างยอดขายคิดเป็นกี่เปอร์เซ็นต์ของยอดขายทั้งหมด?
---      (Pareto 80/20)
---      Fact: fact_order_items | Dimension: dim_sellers
---      Measure: SUM(price) with a cumulative window
--- ============================================================================
-with seller_revenue as (
-    select f.seller_key, sum(f.price) as revenue
-    from {{ ref('fact_order_items') }} as f
-    group by 1
-),
-ranked as (
-    select
-        revenue,
-        row_number() over (order by revenue desc)          as rnk,
-        count(*)     over ()                               as total_sellers,
-        sum(revenue) over (order by revenue desc
-            rows between unbounded preceding and current row) as running_revenue,
-        sum(revenue) over ()                               as total_revenue
-    from seller_revenue
-),
-bands as (
-    select
-        100.0 * rnk / total_sellers            as pct_sellers,
-        100.0 * running_revenue / total_revenue as pct_revenue
-    from ranked
-)
-select 'Top 1%'  as seller_bucket, round(max(pct_revenue), 1) as pct_of_total_revenue from bands where pct_sellers <=  1
-union all
-select 'Top 5%',  round(max(pct_revenue), 1) from bands where pct_sellers <=  5
-union all
-select 'Top 10%', round(max(pct_revenue), 1) from bands where pct_sellers <= 10
-union all
-select 'Top 20%', round(max(pct_revenue), 1) from bands where pct_sellers <= 20;
-
-
--- ============================================================================
--- Q15. Market Basket Analysis: สินค้าคู่ (หมวดหมู่) ใดถูกซื้อร่วมกันบ่อยที่สุด?
---      Fact: fact_order_items (self-join on order_id) | Dimension: dim_products
---      Measure: COUNT(*) co-occurrence
--- ============================================================================
-with order_categories as (
-    select distinct f.order_id, dp.category
-    from {{ ref('fact_order_items') }} as f
-    join {{ ref('dim_products') }} as dp on dp.product_key = f.product_key
-    where dp.category <> 'unknown'
-)
-select
-    a.category                                             as category_a,
-    b.category                                             as category_b,
-    count(*)                                               as orders_bought_together
-from order_categories as a
-join order_categories as b
-    on a.order_id = b.order_id
-   and a.category < b.category
-group by 1, 2
-order by orders_bought_together desc
+order by avg_installments desc
 limit 15;
