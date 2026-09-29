@@ -157,39 +157,18 @@ Query จริงของทุกข้ออยู่ที่ [`olist_dw/an
 2. ในแต่ละปี เดือนใดมียอดขายสูงที่สุด?
 3. แต่ละปีสินค้าแต่ละหมวดหมู่มียอดขายแตกต่างกันเท่าใด?
 4. หมวดหมู่สินค้าใดที่ถูกยกเลิกมากที่สุด?
-5. ระยะเวลาขนส่งสินค้ามีผลต่อคะแนนรีวิวหรือไม่? *(Drill-Across: `fact_order_items` + `fact_order_reviews`)*
+5. ระยะเวลาขนส่งสินค้ามีผลต่อคะแนนรีวิวหรือไม่? 
 6. ราคาสินค้ามีผลต่อค่าส่งหรือไม่?
 7. ขนาดสินค้ามีผลต่อค่าส่งหรือไม่?
 8. น้ำหนักสินค้ามีผลต่อค่าส่งหรือไม่?
-9. ค่าส่งมีผลต่อคะแนนรีวิวหรือไม่? *(Drill-Across: `fact_order_items` + `fact_order_reviews`)*
+9. ค่าส่งมีผลต่อคะแนนรีวิวหรือไม่?
 10. ในแต่ละเดือน วิธีการชำระเงินใดถูกใช้มากที่สุด?
 11. จำนวนรูปภาพของสินค้ามีผลต่อยอดคำสั่งซื้อหรือไม่?
 12. ช่วงเวลาไหนของวันที่มีปริมาณคำสั่งซื้อมากที่สุด?
-13. ในแต่ละเดือนสินค้าประเภทใดขายได้เยอะที่สุด (นับเป็นจำนวนชิ้น)?
+13. ในแต่ละเดือนสินค้าประเภทใดขายได้จำนวนมากที่สุด
 14. ขนาดสินค้ามีผลทำให้การส่งเกิดการล่าช้าหรือไม่?
-15. หมวดหมู่สินค้าใดมีการชำระแบบผ่อนสูงสุด? *(Drill-Across: `fact_order_items` + `fact_order_payments`)*
+15. หมวดหมู่สินค้าใดมีการชำระแบบผ่อนสูงสุด? 
 
-### ตารางเชื่อมโยง คำถาม → Fact / Dimension / Measure
-
-| # | Fact | Dimension ที่เดินผ่าน | Measure ที่วัด |
-|---|---|---|---|
-| 1 | `fact_order_items` | `dim_products` (category) + `dim_date` (month) | `SUM(price)` |
-| 2 | `fact_order_items` | `dim_date` (year → month) | `SUM(price)` |
-| 3 | `fact_order_items` | `dim_products` (category) + `dim_date` (year) | `SUM(price)` เทียบข้ามปี |
-| 4 | `fact_order_items` | `dim_products` (category) + `dim_order_status` | `COUNT(*)` เฉพาะสถานะ `canceled`, cancellation rate |
-| 5 | `fact_order_items` **+** `fact_order_reviews` | conformed: order | `AVG(delivery_days)` (bucket) vs `AVG(review_score)` |
-| 6 | `fact_order_items` | — | `price` (bucket) vs `AVG(freight_value)` |
-| 7 | `fact_order_items` | `dim_products` (size_band) | `AVG(freight_value)` ต่อ size_band |
-| 8 | `fact_order_items` | `dim_products` (weight_g, bucket) | `AVG(freight_value)` |
-| 9 | `fact_order_items` **+** `fact_order_reviews` | conformed: order | `freight_value` / Freight % (bucket) vs `AVG(review_score)` |
-| 10 | `fact_order_payments` | `dim_payment_type` + `dim_date` (month) | `COUNT(DISTINCT order_id)` ต่อวิธีต่อเดือน |
-| 11 | `fact_order_items` | `dim_products` (photos_qty, bucket) | `COUNT(DISTINCT order_id)`, `SUM(price)` |
-| 12 | `fact_order_items` | `dim_date` (purchase_hour) | `COUNT(DISTINCT order_id)` |
-| 13 | `fact_order_items` | `dim_products` (category) + `dim_date` (month) | `COUNT(*)` (จำนวนชิ้น) |
-| 14 | `fact_order_items` | `dim_products` (size_band) | `AVG(is_late_delivery)`, `AVG(delivery_delay_days)` ต่อ size_band |
-| 15 | `fact_order_items` **+** `fact_order_payments` | conformed: order + `dim_products` | `AVG(payment_installments)`, % ออเดอร์ผ่อน ต่อหมวดหมู่ |
-
-> **หมายเหตุ:** ข้อ 4 เดิมตั้งเป็น "ระยะเวลาจัดส่งมีผลต่อการยกเลิกไหม" แต่ตรวจข้อมูลจริงแล้วพบว่าออเดอร์ที่ถูกยกเลิกมีแค่ 542 จาก 112,650 แถว (0.5%) และมีเพียง **7 แถว** ที่มีค่า `delivery_days` (เพราะถูกยกเลิกก่อนจัดส่งจริง จึงไม่มีวันที่ส่งของให้คำนวณ) ตัวอย่างน้อยเกินจะสรุปแนวโน้มได้ และเป็นปัญหาเชิงตรรกะด้วย (การยกเลิกเกิด**ก่อน**มีระยะเวลาจัดส่ง ไม่ใช่ผลลัพธ์ที่ตามหลัง) จึงเปลี่ยนเป็น "หมวดหมู่สินค้าใดที่ถูกยกเลิกมากที่สุด" แทน ซึ่งตอบได้จากข้อมูลจริงทั้ง 542 แถว
 
 ---
 
