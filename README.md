@@ -21,8 +21,7 @@ OLTP ของตลาดกลางออนไลน์ [Olist](https://www.
 5. [กระบวนการ ELT](#5-กระบวนการ-elt)
 6. [Data Warehouse Database + Analytical Queries](#6-data-warehouse-database)
 7. [Interactive Dashboard](#7-interactive-dashboard)
-8. [Team Contribution](#8-team-contribution)
-9. [โครงสร้าง Repository + วิธีรัน](#9-โครงสร้าง-repository--วิธีรัน)
+8. [โครงสร้าง Repository + วิธีรัน](#8-โครงสร้าง-repository--วิธีรัน)
 
 ---
 
@@ -546,20 +545,7 @@ streamlit run dashboard_app.py
 
 ---
 
-## 8. Team Contribution
-
-| สมาชิก | GitHub | ส่วนที่รับผิดชอบ |
-|---|---|---|
-| นางสาวกุลธิดา สมาขันธ์ | `kunthida-samakhan` | _(ระบุภายหลัง)_ |
-| นายชวนากร เพชรเจริญรัตน์ | `chawanakorn-phet` | _(ระบุภายหลัง)_ |
-| นายวรวัฒน์ พรหมคุณ | `worawatpr-gh` | _(ระบุภายหลัง)_ |
-| นายเยี่ยมภพ ใบโพธิ์ | `yiampopbaipo` | _(ระบุภายหลัง)_ |
-
-การแบ่งงานติดตามได้จาก commit history และ branch ของแต่ละคน (ดู Insights → Contributors)
-
----
-
-## 9. โครงสร้าง Repository + วิธีรัน
+## 8. โครงสร้าง Repository + วิธีรัน
 
 ```
 Mini_project/
