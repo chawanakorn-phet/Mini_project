@@ -153,54 +153,46 @@ erDiagram
 ทุกข้อระบุชัดว่าตอบด้วย Fact ใด เดินผ่าน Dimension ใด และวัดด้วย Measure ใด
 Query จริงของทุกข้ออยู่ที่ [`olist_dw/analyses/analytical_queries.sql`](olist_dw/analyses/analytical_queries.sql)
 
-### กลุ่ม A ยอดขายและสินค้า
-1. หมวดหมู่สินค้าใดมียอดขายรวมและจำนวนสินค้าที่ขายสูงที่สุด?
-2. ยอดขายและจำนวนคำสั่งซื้อมีแนวโน้มเปลี่ยนแปลงอย่างไรในแต่ละเดือนและปี?
-3. สินค้าประเภทใดมีราคาเฉลี่ยต่อชิ้นสูงที่สุด และมีจำนวนการขายมากน้อยเพียงใด?
-
-### กลุ่ม B ลูกค้าและพฤติกรรมการซื้อ
-4. ลูกค้าในรัฐและเมืองใดสร้างยอดขายรวมสูงที่สุด?
-5. ลูกค้าที่กลับมาซื้อซ้ำคิดเป็นกี่เปอร์เซ็นต์ของลูกค้าทั้งหมด?
-6. ยอดที่ลูกค้าจ่ายจริงตรงกับมูลค่าสินค้าในตะกร้าหรือไม่ และช่องว่างขยายตามจำนวนงวดผ่อนไหม (ดอกเบี้ย)? *(Drill-Across: `fact_order_items` + `fact_order_payments`)*
-7. ลูกค้ากลุ่มใดมีมูลค่าลูกค้าและความถี่ในการซื้อสูงที่สุดจาก RFM Analysis?
-
-### กลุ่ม C การชำระเงิน
-8. วิธีการชำระเงินใดถูกใช้งานมากที่สุด และมีมูลค่าการชำระเงินเฉลี่ยเท่าใด?
-
-### กลุ่ม D การจัดส่งและประสิทธิภาพผู้ขาย
-9. ผู้ขายในรัฐหรือเมืองใดมีระยะเวลาเตรียมสินค้าเฉลี่ยสูงที่สุด?
-10. ระยะเวลาขนส่งและความล่าช้าในการจัดส่งแตกต่างกันอย่างไรในแต่ละเดือน?
-11. หมวดหมู่สินค้าใดมีสัดส่วนค่าจัดส่งต่อราคาสินค้าสูงที่สุด?
-
-### กลุ่ม E รีวิวและความพึงพอใจของลูกค้า
-12. หมวดหมู่สินค้าใดมีคะแนนรีวิวเฉลี่ยสูงที่สุดและต่ำที่สุด? *(Drill-Across: `fact_order_items` + `fact_order_reviews`)*
-13. คะแนนรีวิวได้รับผลกระทบจากอะไรมากกว่ากัน — การส่งช้า หรือระยะทางระหว่างผู้ซื้อกับผู้ขาย? *(Drill-Across: `fact_order_items` + `fact_order_reviews`)*
-
-### กลุ่ม F ประสิทธิภาพของผู้ขาย
-14. ผู้ขายกลุ่ม Top 10% สร้างยอดขายคิดเป็นกี่เปอร์เซ็นต์ของยอดขายทั้งหมด?
-
-### กลุ่ม G ความสัมพันธ์ระหว่างสินค้า
-15. สินค้าคู่ใดถูกซื้อร่วมกันบ่อยที่สุด?
+1. แต่ละเดือนหมวดหมู่สินค้าใดสร้างยอดขายสูงที่สุด?
+2. ในแต่ละปี เดือนใดมียอดขายสูงที่สุด?
+3. แต่ละปีสินค้าแต่ละหมวดหมู่มียอดขายแตกต่างกันเท่าใด?
+4. หมวดหมู่สินค้าใดที่ถูกยกเลิกมากที่สุด?
+5. ระยะเวลาขนส่งสินค้ามีผลต่อคะแนนรีวิวหรือไม่? *(Drill-Across: `fact_order_items` + `fact_order_reviews`)*
+6. ราคาสินค้ามีผลต่อค่าส่งหรือไม่?
+7. ขนาดสินค้ามีผลต่อค่าส่งหรือไม่?
+8. น้ำหนักสินค้ามีผลต่อค่าส่งหรือไม่?
+9. ค่าส่งมีผลต่อคะแนนรีวิวหรือไม่? *(Drill-Across: `fact_order_items` + `fact_order_reviews`)*
+10. ในแต่ละเดือน วิธีการชำระเงินใดถูกใช้มากที่สุด?
+11. จำนวนรูปภาพของสินค้ามีผลต่อยอดคำสั่งซื้อหรือไม่?
+12. ช่วงเวลาไหนของวันที่มีปริมาณคำสั่งซื้อมากที่สุด?
+13. ในแต่ละเดือนสินค้าประเภทใดขายได้เยอะที่สุด (นับเป็นจำนวนชิ้น)?
+14. ขนาดสินค้ามีผลทำให้การส่งเกิดการล่าช้าหรือไม่?
+15. หมวดหมู่สินค้าใดมีการชำระแบบผ่อนสูงสุด? *(Drill-Across: `fact_order_items` + `fact_order_payments`)*
 
 ### ตารางเชื่อมโยง คำถาม → Fact / Dimension / Measure
 
 | # | Fact | Dimension ที่เดินผ่าน | Measure ที่วัด |
 |---|---|---|---|
-| 1 | `fact_order_items` | `dim_products` (category) | `SUM(price)`, `COUNT(*)` |
-| 2 | `fact_order_items` | `dim_date` (year → month) | `SUM(price)`, `COUNT(DISTINCT order_id)`, MoM % |
-| 3 | `fact_order_items` | `dim_products` (category) | `AVG(price)`, `COUNT(*)` |
-| 4 | `fact_order_items` | `dim_geography` (region → state → city) | `SUM(price)`, `COUNT(DISTINCT order_id)` |
-| 5 | `fact_order_items` | `dim_customers` (`customer_unique_id`) | `COUNT(DISTINCT order_id)` |
-| 6 | `fact_order_items` **+** `fact_order_payments` | conformed: order + `dim_date` | `SUM(total_item_value)` vs `SUM(payment_value)`, `payment_installments` |
-| 7 | `fact_order_items` | `dim_customers` + `dim_date` | Recency `MAX(date)`, Frequency `COUNT`, Monetary `SUM(price)` + `NTILE(5)` |
-| 8 | `fact_order_payments` | `dim_payment_type` | `COUNT(DISTINCT order_id)`, `AVG(payment_value)` |
-| 9 | `fact_order_items` | `dim_sellers` (state) | `AVG(seller_processing_days)` |
-| 10 | `fact_order_items` | `dim_date` (delivered / estimated roles) | `AVG(delivery_days)`, `AVG(delivery_delay_days)`, `AVG(is_late_delivery)` |
-| 11 | `fact_order_items` | `dim_products` (category, size_band) | `SUM(freight_value) / SUM(price)` |
-| 12 | `fact_order_items` **+** `fact_order_reviews` | conformed: order + `dim_products` | `AVG(review_score)` |
-| 13 | `fact_order_items` **+** `fact_order_reviews` | conformed: order + `dim_customers` + `dim_date` | `AVG(is_late_delivery)`, `AVG(buyer_seller_distance_km)`, `AVG(review_score)` |
-| 14 | `fact_order_items` | `dim_sellers` | `SUM(price)` + cumulative window (Pareto) |
-| 15 | `fact_order_items` | `dim_products` (self-join order_id) | `COUNT(*)` co-occurrence |
+| 1 | `fact_order_items` | `dim_products` (category) + `dim_date` (month) | `SUM(price)` |
+| 2 | `fact_order_items` | `dim_date` (year → month) | `SUM(price)` |
+| 3 | `fact_order_items` | `dim_products` (category) + `dim_date` (year) | `SUM(price)` เทียบข้ามปี |
+| 4 | `fact_order_items` | `dim_products` (category) + `dim_order_status` | `COUNT(*)` เฉพาะสถานะ `canceled`, cancellation rate |
+| 5 | `fact_order_items` **+** `fact_order_reviews` | conformed: order | `AVG(delivery_days)` (bucket) vs `AVG(review_score)` |
+| 6 | `fact_order_items` | — | `price` (bucket) vs `AVG(freight_value)` |
+| 7 | `fact_order_items` | `dim_products` (size_band) | `AVG(freight_value)` ต่อ size_band |
+| 8 | `fact_order_items` | `dim_products` (weight_g, bucket) | `AVG(freight_value)` |
+| 9 | `fact_order_items` **+** `fact_order_reviews` | conformed: order | `freight_value` / Freight % (bucket) vs `AVG(review_score)` |
+| 10 | `fact_order_payments` | `dim_payment_type` + `dim_date` (month) | `COUNT(DISTINCT order_id)` ต่อวิธีต่อเดือน |
+| 11 | `fact_order_items` | `dim_products` (photos_qty, bucket) | `COUNT(DISTINCT order_id)`, `SUM(price)` |
+| 12 | `fact_order_items` | `dim_date` (purchase_hour) | `COUNT(DISTINCT order_id)` |
+| 13 | `fact_order_items` | `dim_products` (category) + `dim_date` (month) | `COUNT(*)` (จำนวนชิ้น) |
+| 14 | `fact_order_items` | `dim_products` (size_band) | `AVG(is_late_delivery)`, `AVG(delivery_delay_days)` ต่อ size_band |
+| 15 | `fact_order_items` **+** `fact_order_payments` | conformed: order + `dim_products` | `AVG(payment_installments)`, % ออเดอร์ผ่อน ต่อหมวดหมู่ |
+
+> **หมายเหตุ:** ข้อ 4 เดิมตั้งเป็น "ระยะเวลาจัดส่งมีผลต่อการยกเลิกไหม" แต่ตรวจข้อมูลจริงแล้วพบว่าออเดอร์ที่ถูกยกเลิกมีแค่ 542 จาก 112,650 แถว (0.5%) และมีเพียง **7 แถว** ที่มีค่า `delivery_days` (เพราะถูกยกเลิกก่อนจัดส่งจริง จึงไม่มีวันที่ส่งของให้คำนวณ) ตัวอย่างน้อยเกินจะสรุปแนวโน้มได้ และเป็นปัญหาเชิงตรรกะด้วย (การยกเลิกเกิด**ก่อน**มีระยะเวลาจัดส่ง ไม่ใช่ผลลัพธ์ที่ตามหลัง) จึงเปลี่ยนเป็น "หมวดหมู่สินค้าใดที่ถูกยกเลิกมากที่สุด" แทน ซึ่งตอบได้จากข้อมูลจริงทั้ง 542 แถว
+
+---
+
 ## 3. Multidimensional Data Model
 
 ### 3.1 Dimensions (7 ตาราง)
