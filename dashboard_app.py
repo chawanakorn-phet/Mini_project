@@ -469,9 +469,17 @@ def grouped_bar_labeled(df, x, y, group, x_title, y_title, group_title, *, fmt="
 
 
 def stacked_bar_labeled(df, x, y, color, x_title, y_title, color_title, *, fmt=",.0f",
-                         height=380, sort=None, scheme="tableau10"):
-    """Stacked bar chart (genuine 'stack' chart) with a label inside every segment
-    — used to compare composition (e.g. payment-method mix) across time."""
+                         height=420, sort=None, scheme="tableau10", min_label_share=0.06):
+    """Stacked bar chart (genuine 'stack' chart) with a label inside each segment
+    that is big enough to hold one — used to compare composition (e.g.
+    payment-method mix) across time. Tiny slivers are left unlabeled (their
+    number would only overlap the neighbours) but stay fully readable via
+    tooltip, so no information is lost."""
+    df = df.copy()
+    share = df[y] / df.groupby(x)[y].transform("sum")
+    big_enough = share >= min_label_share
+    df["_label"] = [f"{int(v):,}" if ok else "" for v, ok in zip(df[y], big_enough)]
+
     enc_x = alt.X(f"{x}:N", title=x_title, sort=sort, axis=alt.Axis(labelAngle=-30))
     enc_y = alt.Y(f"{y}:Q", title=y_title, stack="zero")
     enc_color = alt.Color(f"{color}:N", title=color_title, scale=alt.Scale(scheme=scheme))
@@ -482,8 +490,8 @@ def stacked_bar_labeled(df, x, y, color, x_title, y_title, color_title, *, fmt="
         tooltip=[alt.Tooltip(f"{x}:N", title=x_title), alt.Tooltip(f"{color}:N", title=color_title),
                  alt.Tooltip(f"{y}:Q", title=y_title, format=fmt)],
     )
-    text = base.mark_text(fontSize=9, color="white", fontWeight="bold").encode(
-        y=alt.Y(f"{y}:Q", stack="zero"), text=alt.Text(f"{y}:Q", format=fmt),
+    text = base.mark_text(fontSize=10, color="white", fontWeight="bold").encode(
+        y=alt.Y(f"{y}:Q", stack="zero"), text=alt.Text("_label:N"),
     )
     return alt.layer(bars, text).properties(height=height)
 

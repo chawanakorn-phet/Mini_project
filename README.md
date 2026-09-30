@@ -295,6 +295,7 @@ erDiagram
         int seller_geography_key FK
         float price
         float freight_value
+        float total_item_value
         int delivery_days
         int seller_processing_days
         int carrier_transit_days
@@ -323,6 +324,7 @@ erDiagram
         int order_status_key FK
         int review_score
         int response_hours
+        boolean has_comment
     }
 
     dim_date       ||--o{ fact_order_items    : "purchased on"
