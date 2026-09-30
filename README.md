@@ -366,14 +366,7 @@ erDiagram
 
 และมีคำถามที่ **fact เดียวตอบไม่ได้** ต้อง aggregate 2 fact แยกกันไปที่ grain ร่วม
 แล้ว join ผ่าน **conformed dimension** — นี่คือ **drill-across** ซึ่งเป็นเหตุผลตรงตัวว่าทำไม galaxy schema
-ต้องมีอยู่ ตัวอย่าง:
-
-| คำถาม | Fact A | Fact B | เชื่อมผ่าน conformed dim |
-|---|---|---|---|
-| 6. ยอดจ่ายจริง vs มูลค่าตะกร้า (+ งวดผ่อน) | items | payments | order_id + `dim_date` |
-| 12. คะแนนรีวิวเฉลี่ยรายหมวดหมู่ | items | reviews | order_id + `dim_products` |
-| 13. ส่งช้า vs ระยะทาง → คะแนนรีวิว | items | reviews | order_id + `dim_customers` + `dim_date` |
-
+ต้องมีอยู่ 
 ---
 
 ## 5. กระบวนการ ELT
