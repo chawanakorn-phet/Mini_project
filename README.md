@@ -1,4 +1,4 @@
-# Mini Project — Data Warehouse & Multidimensional Data Model
+# Mini Project
 ## Olist Brazilian E-Commerce (OLTP → OLAP)
 
 การออกแบบและพัฒนา **Data Warehouse** พร้อม **Multidimensional Data Model** เพื่อแปลงระบบ
